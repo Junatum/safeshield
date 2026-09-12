@@ -7,7 +7,7 @@ function save_state_file(path, now,    tmp, bucket, cutoff, key, composite, part
 	}
 
 	tmp = path ".tmp"
-	printf "meta\t%d\t%d\t%d\t%d\t%d\t%d\t5\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\n", \
+	printf "meta\t%d\t%d\t%d\t%d\t%d\t%d\t6\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\n", \
 		started_at, updated_at, total_queries, total_blocked, devices_truncated, \
 		persistent_updated_at, session_started_at, persistence_healthy, \
 		persistent_error_count, persistent_last_error_at, persistent_compacted_at, \
@@ -36,13 +36,15 @@ function save_state_file(path, now,    tmp, bucket, cutoff, key, composite, part
 		}
 	}
 	for (key in device_seen) {
-		printf "device\t%s\t%s\t%s\t%s\t%d\t%d\n", \
+		printf "device\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n", \
 			normalize_state_field(key), \
 			normalize_state_field(device_mac[key]), \
 			normalize_state_field(device_ip[key]), \
 			normalize_state_field(device_hostname[key]), \
 			device_queries[key] + 0, \
-			device_blocked[key] + 0 >> tmp
+			device_blocked[key] + 0, \
+			normalize_state_field(device_client_id[key]), \
+			normalize_state_field(device_duid[key]) >> tmp
 	}
 	for (composite in device_hour_queries) {
 		split(composite, parts, SUBSEP)
@@ -171,7 +173,7 @@ function write_journal_transaction(now, first_bucket, last_bucket, completed_thr
 
 	tmp = state_file ".journal.tmp"
 	txn_id = sprintf("%d-%d-%d", now, event_index, ++journal_txn_seq)
-	printf "begin\t%s\t3\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\n", \
+	printf "begin\t%s\t4\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\n", \
 		txn_id, now, started_at, devices_truncated, session_started_at, \
 		completed_through, persistence_healthy, persistent_error_count, \
 		persistent_last_error_at, normalize_state_field(generation_id), \
@@ -207,11 +209,13 @@ function write_journal_transaction(now, first_bucket, last_bucket, completed_thr
 				continue
 			}
 			if (!wrote_device) {
-				printf "device\t%s\t%s\t%s\t%s\n", \
+				printf "device\t%s\t%s\t%s\t%s\t%s\t%s\n", \
 					normalize_state_field(key), \
 					normalize_state_field(device_mac[key]), \
 					normalize_state_field(device_ip[key]), \
-					normalize_state_field(device_hostname[key]) >> tmp
+					normalize_state_field(device_hostname[key]), \
+					normalize_state_field(device_client_id[key]), \
+					normalize_state_field(device_duid[key]) >> tmp
 				wrote_device = 1
 			}
 			printf "device_bucket\t%s\t%d\t%d\t%d\n", \

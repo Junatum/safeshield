@@ -359,14 +359,24 @@ queries are excluded so SafeShield's own DNS health checks do not inflate user
 query or blocked counters. In addition to global hourly query/block counters,
 SafeShield keeps per-device totals and per-device hourly buckets locally. DHCP
 clients are identified by MAC address using the dnsmasq lease file, with the
-current IP and hostname included for the local UI. IPv4 clients can also be
-resolved through the kernel ARP table, while IPv6 clients use the kernel NDP
-neighbor cache (`ip -6 neigh show`). This lets multiple IPv6 privacy/temporary
-addresses from the same LAN client converge on one MAC identity and migrates
-any earlier `ip:<address>` hourly buckets when the neighbor entry becomes
-available. Clients that still cannot be resolved use a temporary IP-based
-identity. Device statistics are capped at 128 identities to bound memory use
-on low-end routers.
+current IP and hostname included for the local UI. The collector also retains a
+non-MAC-derived DHCP client-id when one is available. IPv4 clients can be
+resolved through the kernel ARP table, while IPv6 clients combine the kernel NDP
+neighbor cache (`ip -6 neigh show`) with odhcpd `ipv6leases` DUID metadata. A
+stable DHCP client-id or DHCPv6 DUID therefore moves retained history from an
+older private/randomized MAC to the currently observed MAC instead of exposing
+both MACs as separate devices.
+
+For older retained data that predates those strong identifiers, SafeShield uses
+a conservative hostname fallback only when exactly one active MAC advertises a
+non-generic hostname and a matching historical MAC is no longer active. Generic
+names such as `iPhone`, `Android`, `phone`, or `laptop` are never merged by
+hostname alone. Unresolved IP-only identities remain separate internally for a
+short reconciliation window, but the public statistics JSON serializes them as
+one `unknown` device so IPv6 privacy addresses do not create a device record per
+address. IP-only entries with no stable DHCP identity are compacted into that
+local unknown bucket after six hours. Device statistics remain capped at 128
+active retained identities to bound memory use on low-end routers.
 
 Each retained statistics dataset has a stable `generation_id`. `started_at` is
 the creation time of that retained dataset and is restored together with the

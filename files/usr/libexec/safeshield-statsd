@@ -11,6 +11,7 @@ SS_STATSD_FUNCTIONS_LIB="${SS_STATSD_FUNCTIONS_LIB:-/lib/functions.sh}"
 SS_STATSD_CORE_LIB="${SS_STATSD_CORE_LIB:-/usr/lib/safeshield/core.sh}"
 SS_STATSD_AWK_DIR="${SS_STATSD_AWK_DIR:-/usr/lib/safeshield/statistics}"
 SS_STATSD_POLL_COMMAND="${SS_STATSD_POLL_COMMAND:-/usr/libexec/safeshield-stats-poll}"
+SS_STATSD_IDENTITY_COMMAND="${SS_STATSD_IDENTITY_COMMAND:-/usr/libexec/safeshield-stats-identities}"
 SS_STATSD_PERSISTENT_STATE_FILE="${SS_STATSD_PERSISTENT_STATE_FILE:-/etc/safeshield/statistics-state.tsv}"
 SS_STATSD_PERSISTENT_JOURNAL_FILE="${SS_STATSD_PERSISTENT_JOURNAL_FILE:-/etc/safeshield/statistics-journal.tsv}"
 SS_STATSD_SEQUENCE_FILE="${SS_STATSD_SEQUENCE_FILE:-/etc/safeshield/statistics-sequence.tsv}"
@@ -137,7 +138,7 @@ stats_run_collector() {
 	local persistent_state_file="$4"
 	local persistent_journal_file="$5"
 	local sequence_file="$6"
-	local generation_id ipv6_neigh_command='' force_rebaseline=0 rc=0
+	local generation_id ipv6_neigh_command='' ipv6_identity_command='' ipv6_identity_file="${SS_STATSD_IPV6_IDENTITY_FILE:-}" force_rebaseline=0 rc=0
 
 	if [ -f "${SS_STATISTICS_REBASELINE_FILE}" ]; then
 		force_rebaseline=1
@@ -148,6 +149,9 @@ stats_run_collector() {
 	generation_id="$(stats_new_generation_id)"
 	if command_exists ip; then
 		ipv6_neigh_command='ip -6 neigh show 2>/dev/null'
+	fi
+	if [ -z "$ipv6_identity_file" ] && [ -x "$SS_STATSD_IDENTITY_COMMAND" ]; then
+		ipv6_identity_command="$SS_STATSD_IDENTITY_COMMAND 2>/dev/null"
 	fi
 
 	stats_fifo="${SS_STATISTICS_DIR}/events.$$"
@@ -175,6 +179,8 @@ stats_run_collector() {
 		-v retention_hours="${retention_hours}" \
 		-v lease_file="${lease_file}" \
 		-v ipv6_neigh_command="${ipv6_neigh_command}" \
+		-v ipv6_identity_file="${ipv6_identity_file}" \
+		-v ipv6_identity_command="${ipv6_identity_command}" \
 		-v lease_refresh_interval=60 \
 		-v identity_cache_ttl=60 \
 		-v max_devices=128 \

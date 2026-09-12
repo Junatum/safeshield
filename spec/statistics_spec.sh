@@ -91,6 +91,27 @@ Describe 'SafeShield statistics behavior'
 		The error should equal ''
 	End
 
+	It 'merges private MAC rotation by DHCP client identifier'
+		When call ss_case_statistics_dhcp_client_id_identity
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
+	It 'merges IPv6 private MAC rotation by DHCPv6 DUID'
+		When call ss_case_statistics_ipv6_duid_identity
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
+	It 'uses conservative hostname fallback for historical MAC identities'
+		When call ss_case_statistics_hostname_identity
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
 	It 'projects a recent upload window with internally consistent totals'
 		When call ss_case_statistics_upload_projection
 		The status should be success

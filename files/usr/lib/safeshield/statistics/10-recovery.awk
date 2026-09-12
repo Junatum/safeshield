@@ -142,7 +142,7 @@ function load_sequence_reservation(path, expected_generation,    line, fields, c
 	return (reserved > 0) ? reserved : 0
 }
 
-function load_state_file(path,    line, fields, count, bucket, key, mac, ip, hostname, composite) {
+function load_state_file(path,    line, fields, count, bucket, key, mac, ip, hostname, client_id, duid, composite) {
 	if (path == "") {
 		return 0
 	}
@@ -225,7 +225,9 @@ function load_state_file(path,    line, fields, count, bucket, key, mac, ip, hos
 			mac = decode_state_field(fields[3])
 			ip = decode_state_field(fields[4])
 			hostname = decode_state_field(fields[5])
-			key = register_device(key, mac, ip, hostname)
+			client_id = (count >= 8) ? decode_state_field(fields[8]) : ""
+			duid = (count >= 9) ? decode_state_field(fields[9]) : ""
+			key = register_device(key, mac, ip, hostname, client_id, duid)
 			if (key != "") {
 				legacy_device_queries[key] += numeric(fields[6], 0)
 				legacy_device_blocked[key] += numeric(fields[7], 0)
@@ -278,7 +280,7 @@ function journal_file_updated_at(path,    line, fields, count, line_no, current_
 	return (last_commit_line > 0) ? latest_updated : -1
 }
 
-function load_journal_file(path, min_updated_at, min_snapshot_seq,    line, fields, count, line_no, current_txn, current_start, active_end, txn_updated, txn_started, txn_truncated, txn_session_started, txn_completed, txn_healthy, txn_error_count, txn_last_error, txn_generation_id, txn_snapshot_seq, txn_snapshot_reserved, key, mac, ip, hostname, bucket, composite, committed_end) {
+function load_journal_file(path, min_updated_at, min_snapshot_seq,    line, fields, count, line_no, current_txn, current_start, active_end, txn_updated, txn_started, txn_truncated, txn_session_started, txn_completed, txn_healthy, txn_error_count, txn_last_error, txn_generation_id, txn_snapshot_seq, txn_snapshot_reserved, key, mac, ip, hostname, client_id, duid, bucket, composite, committed_end) {
 	if (path == "") {
 		return 0
 	}
@@ -362,7 +364,9 @@ function load_journal_file(path, min_updated_at, min_snapshot_seq,    line, fiel
 			mac = decode_state_field(fields[3])
 			ip = decode_state_field(fields[4])
 			hostname = decode_state_field(fields[5])
-			register_device(key, mac, ip, hostname)
+			client_id = (count >= 6) ? decode_state_field(fields[6]) : ""
+			duid = (count >= 7) ? decode_state_field(fields[7]) : ""
+			register_device(key, mac, ip, hostname, client_id, duid)
 			continue
 		}
 		if (count >= 5 && fields[1] == "device_bucket") {
@@ -414,7 +418,7 @@ function load_journal_file(path, min_updated_at, min_snapshot_seq,    line, fiel
 			persistent_last_error_at = txn_last_error
 			updated_at = txn_updated
 			loaded_state = 1
-			state_schema_version = 5
+			state_schema_version = 6
 			current_txn = ""
 			active_end = 0
 		}

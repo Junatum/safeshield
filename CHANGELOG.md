@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.21-r4] - 2026-09-12
+
+### Added
+
+- Track DHCP client identifiers from the dnsmasq lease file and DHCPv6 DUIDs from odhcpd so statistics history can survive private/randomized MAC changes.
+- Add an odhcpd IPv6 identity helper that pairs DHCPv6 DUID/hostname metadata with kernel NDP MAC resolution.
+- Add regression coverage for DHCP client-id MAC rotation, DHCPv6 DUID MAC rotation, conservative hostname fallback, and aggregated unresolved clients.
+
+### Changed
+
+- Reconcile a previously retained MAC identity into the currently observed MAC when a stable DHCP client-id or DHCPv6 DUID proves they are the same client.
+- Use a conservative hostname fallback only when exactly one active MAC advertises a non-generic hostname and the retained candidate is no longer active.
+- Serialize unresolved IP-only clients as a single `unknown` device while retaining their recent IP-specific buckets internally long enough for later DHCP/ARP/NDP reconciliation.
+- Compact unresolved IP-only identities without a strong identifier into the local `unknown` bucket after six hours, bounding retained per-device state on networks with frequent IPv6 privacy-address rotation.
+- Bump the internal statistics persistence schema from 5 to 6 to retain DHCP client-id and DHCPv6 DUID metadata across collector restarts and journal recovery.
+
 ## [0.3.21-r3] - 2026-09-12
 
 ### Changed

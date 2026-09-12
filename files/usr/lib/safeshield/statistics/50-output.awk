@@ -11,7 +11,11 @@ function statistics_first_hour(now,    current_hour, cutoff, first_hour) {
 	return first_hour
 }
 
-function save_json_range(path, now, first_hour, last_hour, include_empty_devices,    tmp, bucket, comma, key, identified, device_comma, composite, device_first_hour, device_last_hour, persistence_enabled, persistent, healthy, volatile_state, storage, persistence_mode, truncated, range_queries, range_blocked, device_range_queries, device_range_blocked, device_has_rows) {
+function is_unknown_output_device(key) {
+	return (key == "unknown" || (device_mac[key] == "" && key ~ /^ip:/))
+}
+
+function save_json_range(path, now, first_hour, last_hour, include_empty_devices,    tmp, bucket, comma, key, identified, device_comma, composite, device_first_hour, device_last_hour, persistence_enabled, persistent, healthy, volatile_state, storage, persistence_mode, truncated, range_queries, range_blocked, device_range_queries, device_range_blocked, device_has_rows, unknown_has_rows, unknown_queries, unknown_blocked) {
 	if (path == "") {
 		return 1
 	}
@@ -34,6 +38,32 @@ function save_json_range(path, now, first_hour, last_hour, include_empty_devices
 	for (bucket = first_hour; bucket <= last_hour; bucket += 3600) {
 		range_queries += queries[bucket] + 0
 		range_blocked += blocked[bucket] + 0
+		delete unknown_hour_queries[bucket]
+		delete unknown_hour_blocked[bucket]
+	}
+
+	# IP-only identities are intentionally retained internally for a short period
+	# so a later DHCP/ARP/NDP observation can migrate their history to a real
+	# device. They are serialized as one logical "unknown" client so temporary
+	# IPv6 privacy addresses cannot create unbounded client records in the Hub/UI.
+	unknown_has_rows = 0
+	unknown_queries = 0
+	unknown_blocked = 0
+	for (key in device_seen) {
+		if (!is_unknown_output_device(key)) {
+			continue
+		}
+		for (bucket = first_hour; bucket <= last_hour; bucket += 3600) {
+			composite = device_bucket_key(key, bucket)
+			if (!((composite in device_hour_queries) || (composite in device_hour_blocked))) {
+				continue
+			}
+			unknown_has_rows = 1
+			unknown_hour_queries[bucket] += device_hour_queries[composite] + 0
+			unknown_hour_blocked[bucket] += device_hour_blocked[composite] + 0
+			unknown_queries += device_hour_queries[composite] + 0
+			unknown_blocked += device_hour_blocked[composite] + 0
+		}
 	}
 
 	printf "{\"schema\":{\"name\":\"safeshield.statistics\",\"version\":3}," > tmp
@@ -69,6 +99,9 @@ function save_json_range(path, now, first_hour, last_hour, include_empty_devices
 
 	comma = ""
 	for (key in device_seen) {
+		if (is_unknown_output_device(key)) {
+			continue
+		}
 		device_first_hour = device_first_bucket[key] + 0
 		device_last_hour = device_last_bucket[key] + 0
 		if (device_first_hour <= 0 || device_first_hour < first_hour) {
@@ -122,9 +155,29 @@ function save_json_range(path, now, first_hour, last_hour, include_empty_devices
 		printf "]}" >> tmp
 		comma = ","
 	}
+
+	if (unknown_has_rows) {
+		printf "%s{\"id\":\"unknown\",\"mac\":\"\",\"ip\":\"\",\"hostname\":\"Unknown devices\",\"identified\":false,\"queries\":%d,\"blocked\":%d,\"hourly\":[", \
+			comma, unknown_queries, unknown_blocked >> tmp
+		device_comma = ""
+		for (bucket = first_hour; bucket <= last_hour; bucket += 3600) {
+			if (!((bucket in unknown_hour_queries) || (bucket in unknown_hour_blocked))) {
+				continue
+			}
+			printf "%s{\"bucket_start\":%d,\"queries\":%d,\"blocked\":%d}", \
+				device_comma, bucket, unknown_hour_queries[bucket] + 0, unknown_hour_blocked[bucket] + 0 >> tmp
+			device_comma = ","
+		}
+		printf "]}" >> tmp
+		comma = ","
+	}
 	printf "]}\n" >> tmp
 	close(tmp)
 
+	for (bucket = first_hour; bucket <= last_hour; bucket += 3600) {
+		delete unknown_hour_queries[bucket]
+		delete unknown_hour_blocked[bucket]
+	}
 	return replace_file(tmp, path)
 }
 
@@ -159,6 +212,9 @@ function save_snapshot(now, force_persistent, force_snapshot,    serialize_snaps
 	if (serialize_snapshot) {
 		prune_buckets(now)
 		recompute_totals()
+		if (compact_stale_provisional_devices(now) > 0) {
+			recompute_totals()
+		}
 		updated_at = now
 		if (!ensure_snapshot_sequence_reservation(now)) {
 			return 0

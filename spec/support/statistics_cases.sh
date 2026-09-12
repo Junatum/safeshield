@@ -74,7 +74,7 @@ LOGS
 	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":3,"blocked":2}'
 	! grep -F 'ads.example' "$STATE" "$JSON" >/dev/null
 	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:ff","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.20","hostname":"iphone","identified":true,"queries":2,"blocked":2'
-	ss_spec_assert_file_contains "$JSON" '"id":"ip:192.168.1.10","mac":"","ip":"192.168.1.10","hostname":"","identified":false,"queries":1,"blocked":0'
+	ss_spec_assert_file_contains "$JSON" '"id":"unknown","mac":"","ip":"","hostname":"Unknown devices","identified":false,"queries":1,"blocked":0'
 
 	cat >"$FIXTURE" <<'LOGS'
 Sat Aug 29 07:00:00 2026 daemon.info dnsmasq[1]: 14 192.168.1.30/50004 query[A] openwrt.org from 192.168.1.30
@@ -644,7 +644,7 @@ LOGS
 		<"$LOG"
 
 	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":1,"blocked":1}'
-	ss_spec_assert_file_contains "$JSON" '"id":"ip:192.168.1.20"'
+	ss_spec_assert_file_contains "$JSON" '"id":"unknown"'
 	! grep -F '"id":"ip:127.' "$JSON" >/dev/null
 	! grep -F '"id":"ip:::1"' "$JSON" >/dev/null
 )
@@ -675,7 +675,7 @@ ss_case_statistics_generation() (
 
 	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-one","snapshot_seq":1'
 	ss_spec_assert_file_contains "$JSON" '"started_at":1787950800,"session_started_at":1787950800'
-	ss_spec_assert_eq "$(awk -F '\t' '$1 == "meta" { print $8 " " $15 " " $16 }' "$STATE")" '5 generation-one 1'
+	ss_spec_assert_eq "$(awk -F '\t' '$1 == "meta" { print $8 " " $15 " " $16 }' "$STATE")" '6 generation-one 1'
 
 	ss_statistics_awk \
 		-v state_file="$STATE" \
@@ -957,8 +957,8 @@ LOGS
 		<"$LOG"
 
 	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":2,"blocked":0}'
-	ss_spec_assert_file_contains "$JSON" '"id":"ip:2001:db8::100","mac":"","ip":"2001:db8::100","hostname":"","identified":false'
-	ss_spec_assert_file_contains "$JSON" '"id":"ip:2001:db8::200","mac":"","ip":"2001:db8::200","hostname":"","identified":false'
+	ss_spec_assert_file_contains "$JSON" '"id":"unknown","mac":"","ip":"","hostname":"Unknown devices","identified":false,"queries":2,"blocked":0'
+	! grep -F '"id":"ip:' "$JSON" >/dev/null
 )
 
 ss_case_statistics_ipv6_neighbor_identity() (
@@ -991,7 +991,7 @@ LOGS
 		-v fixed_now=1787950800 \
 		<"$FIRST_LOG"
 
-	ss_spec_assert_file_contains "$JSON" '"id":"ip:2001:db8::100","mac":"","ip":"2001:db8::100","hostname":"","identified":false,"queries":1,"blocked":0'
+	ss_spec_assert_file_contains "$JSON" '"id":"unknown","mac":"","ip":"","hostname":"Unknown devices","identified":false,"queries":1,"blocked":0'
 
 	cat >"$NEIGH" <<'NEIGHBORS'
 2001:db8::100 dev br-lan lladdr aa:bb:cc:dd:ee:ff STALE
@@ -1017,10 +1017,132 @@ LOGS
 
 	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":3,"blocked":0}'
 	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:ff","mac":"aa:bb:cc:dd:ee:ff","ip":"2001:db8::200","hostname":"","identified":true,"queries":2,"blocked":0'
-	ss_spec_assert_file_contains "$JSON" '"id":"ip:2001:db8::300","mac":"","ip":"2001:db8::300","hostname":"","identified":false,"queries":1,"blocked":0'
+	ss_spec_assert_file_contains "$JSON" '"id":"unknown","mac":"","ip":"","hostname":"Unknown devices","identified":false,"queries":1,"blocked":0'
 	! grep -F '"id":"ip:2001:db8::100"' "$JSON" >/dev/null
 	! grep -F '"id":"ip:2001:db8::200"' "$JSON" >/dev/null
 	! grep -F "$(printf 'device_bucket\tip:2001:db8::100\t')" "$STATE" >/dev/null
+)
+
+ss_case_statistics_dhcp_client_id_identity() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	LEASES="$TMP/dhcp.leases"
+	ARP="$TMP/arp"
+	LOG="$TMP/dnsmasq.log"
+	printf '%s\n' 'IP address       HW type     Flags       HW address            Mask     Device' >"$ARP"
+
+	printf '%s\n' '1788000000 aa:bb:cc:dd:ee:01 192.168.1.20 jeongsug-ui-S22 stable-client-1' >"$LEASES"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 1 192.168.1.20/5000 query[A] first.example from 192.168.1.20' >"$LOG"
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='generation-client-id' \
+		-v fixed_now=1787950800 \
+		<"$LOG"
+	ss_spec_assert_file_contains "$STATE" "$(printf 'device\taa:bb:cc:dd:ee:01\taa:bb:cc:dd:ee:01\t192.168.1.20\tjeongsug-ui-S22\t1\t0\tstable-client-1\t*')"
+
+	printf '%s\n' '1788000000 aa:bb:cc:dd:ee:02 192.168.1.20 jeongsug-ui-S22 stable-client-1' >"$LEASES"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 2 192.168.1.20/5000 query[A] second.example from 192.168.1.20' >"$LOG"
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='unused-generation' \
+		-v fixed_now=1787950861 \
+		<"$LOG"
+
+	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:02","mac":"aa:bb:cc:dd:ee:02","ip":"192.168.1.20","hostname":"jeongsug-ui-S22","identified":true,"queries":2,"blocked":0'
+	! grep -F '"id":"aa:bb:cc:dd:ee:01"' "$JSON" >/dev/null
+	! grep -F "$(printf 'device_bucket\taa:bb:cc:dd:ee:01\t')" "$STATE" >/dev/null
+	ss_spec_assert_eq "$(awk -F '\t' '$1 == "meta" { print $8 }' "$STATE")" '6'
+)
+
+ss_case_statistics_ipv6_duid_identity() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	LEASES="$TMP/dhcp.leases"
+	ARP="$TMP/arp"
+	NEIGH="$TMP/ipv6-neigh"
+	IDENTITIES="$TMP/ipv6-identities"
+	LOG="$TMP/dnsmasq.log"
+	: >"$LEASES"
+	printf '%s\n' 'IP address       HW type     Flags       HW address            Mask     Device' >"$ARP"
+
+	printf '%s\t%s\t%s\n' '2001:db8::1' '0004ABCDEF' 'pixel-8' >"$IDENTITIES"
+	printf '%s\n' '2001:db8::1 dev br-lan lladdr aa:bb:cc:dd:ee:11 REACHABLE' >"$NEIGH"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 1 2001:db8::1/5000 query[AAAA] first.example from 2001:db8::1' >"$LOG"
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v ipv6_identity_file="$IDENTITIES" \
+		-v ipv6_neigh_file="$NEIGH" \
+		-v generation_seed='generation-duid' \
+		-v fixed_now=1787950800 \
+		<"$LOG"
+
+	printf '%s\t%s\t%s\n' '2001:db8::2' '0004abcdef' 'pixel-8' >"$IDENTITIES"
+	printf '%s\n' '2001:db8::2 dev br-lan lladdr aa:bb:cc:dd:ee:12 REACHABLE' >"$NEIGH"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 2 2001:db8::2/5000 query[AAAA] second.example from 2001:db8::2' >"$LOG"
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v ipv6_identity_file="$IDENTITIES" \
+		-v ipv6_neigh_file="$NEIGH" \
+		-v generation_seed='unused-generation' \
+		-v fixed_now=1787950861 \
+		<"$LOG"
+
+	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:12","mac":"aa:bb:cc:dd:ee:12","ip":"2001:db8::2","hostname":"pixel-8","identified":true,"queries":2,"blocked":0'
+	! grep -F '"id":"aa:bb:cc:dd:ee:11"' "$JSON" >/dev/null
+	ss_spec_assert_file_contains "$STATE" "$(printf 'device\taa:bb:cc:dd:ee:12\taa:bb:cc:dd:ee:12\t2001:db8::2\tpixel-8\t2\t0\t*\t0004abcdef')"
+)
+
+ss_case_statistics_hostname_identity() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	LEASES="$TMP/dhcp.leases"
+	ARP="$TMP/arp"
+	LOG="$TMP/dnsmasq.log"
+	printf '%s\n' 'IP address       HW type     Flags       HW address            Mask     Device' >"$ARP"
+
+	printf '%s\n' '1788000000 aa:bb:cc:dd:ee:21 192.168.1.20 jeongsug-ui-S22 *' >"$LEASES"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 1 192.168.1.20/5000 query[A] first.example from 192.168.1.20' >"$LOG"
+	ss_statistics_awk -v state_file="$STATE" -v json_file="$JSON" -v lease_file="$LEASES" -v arp_file="$ARP" -v generation_seed='generation-hostname' -v fixed_now=1787950800 <"$LOG"
+
+	printf '%s\n' '1788000000 aa:bb:cc:dd:ee:22 192.168.1.20 jeongsug-ui-S22 *' >"$LEASES"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 2 192.168.1.20/5000 query[A] second.example from 192.168.1.20' >"$LOG"
+	ss_statistics_awk -v state_file="$STATE" -v json_file="$JSON" -v lease_file="$LEASES" -v arp_file="$ARP" -v generation_seed='unused-generation' -v fixed_now=1787950861 <"$LOG"
+	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:22","mac":"aa:bb:cc:dd:ee:22","ip":"192.168.1.20","hostname":"jeongsug-ui-S22","identified":true,"queries":2,"blocked":0'
+	! grep -F '"id":"aa:bb:cc:dd:ee:21"' "$JSON" >/dev/null
+
+	# Generic hostnames are deliberately not merged because multiple unrelated
+	# devices commonly advertise the same factory/default name.
+	STATE="$TMP/generic-state.tsv"
+	JSON="$TMP/generic-statistics.json"
+	printf '%s\n' '1788000000 aa:bb:cc:dd:ee:31 192.168.1.30 iPhone *' >"$LEASES"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 3 192.168.1.30/5000 query[A] first.example from 192.168.1.30' >"$LOG"
+	ss_statistics_awk -v state_file="$STATE" -v json_file="$JSON" -v lease_file="$LEASES" -v arp_file="$ARP" -v generation_seed='generation-generic' -v fixed_now=1787950800 <"$LOG"
+	printf '%s\n' '1788000000 aa:bb:cc:dd:ee:32 192.168.1.30 iPhone *' >"$LEASES"
+	printf '%s\n' 'daemon.info dnsmasq[1]: 4 192.168.1.30/5000 query[A] second.example from 192.168.1.30' >"$LOG"
+	ss_statistics_awk -v state_file="$STATE" -v json_file="$JSON" -v lease_file="$LEASES" -v arp_file="$ARP" -v generation_seed='unused-generation' -v fixed_now=1787950861 <"$LOG"
+	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:31"'
+	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:32"'
 )
 
 ss_case_statistics_modules() (
@@ -1028,6 +1150,7 @@ ss_case_statistics_modules() (
 	STATISTICS_DIR="$SS_SPEC_ROOT/files/usr/lib/safeshield/statistics"
 	STATSD="$SS_SPEC_ROOT/files/usr/libexec/safeshield-statsd"
 	POLL_HELPER="$SS_SPEC_ROOT/files/usr/libexec/safeshield-stats-poll"
+	IDENTITY_HELPER="$SS_SPEC_ROOT/files/usr/libexec/safeshield-stats-identities"
 	for module in \
 		00-common.awk \
 		10-recovery.awk \
@@ -1041,6 +1164,7 @@ ss_case_statistics_modules() (
 	done
 	[ ! -e "$SS_SPEC_ROOT/files/usr/lib/safeshield/statistics.awk" ]
 	[ -x "$POLL_HELPER" ]
+	[ -x "$IDENTITY_HELPER" ]
 	ss_spec_assert_file_contains "$POLL_HELPER" "ubus.call('dnsmasq', 'safeshield_stats', {})"
 	ss_spec_assert_file_contains "$POLL_HELPER" 'uint_or_null(data.schema) != 1'
 	ss_spec_assert_file_contains "$POLL_HELPER" "type(data.totals) != 'object'"
@@ -1048,7 +1172,10 @@ ss_case_statistics_modules() (
 	ss_spec_assert_file_contains "$POLL_HELPER" 'untracked_blocked'
 	ss_spec_assert_file_not_contains "$POLL_HELPER" 'smartsafehub_stats'
 	ss_spec_assert_file_contains "$STATSD" 'SS_STATSD_POLL_COMMAND'
+	ss_spec_assert_file_contains "$STATSD" 'SS_STATSD_IDENTITY_COMMAND'
+	ss_spec_assert_file_contains "$IDENTITY_HELPER" "conn.call('dhcp', 'ipv6leases', {})"
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/Makefile" '$(INSTALL_BIN) ./files/usr/libexec/safeshield-stats-poll $(1)/usr/libexec/safeshield-stats-poll'
+	ss_spec_assert_file_contains "$SS_SPEC_ROOT/Makefile" '$(INSTALL_BIN) ./files/usr/libexec/safeshield-stats-identities $(1)/usr/libexec/safeshield-stats-identities'
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/Makefile" '$(INSTALL_DATA) ./files/usr/lib/safeshield/statistics/*.awk $(1)/usr/lib/safeshield/statistics/'
 )
 

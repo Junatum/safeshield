@@ -161,11 +161,14 @@ BEGIN {
 	arp_file = (arp_file != "") ? arp_file : "/proc/net/arp"
 	ipv6_neigh_file = (ipv6_neigh_file != "") ? ipv6_neigh_file : ""
 	ipv6_neigh_command = (ipv6_neigh_command != "") ? ipv6_neigh_command : ""
+	ipv6_identity_file = (ipv6_identity_file != "") ? ipv6_identity_file : ""
+	ipv6_identity_command = (ipv6_identity_command != "") ? ipv6_identity_command : ""
 	snapshot_interval = numeric(snapshot_interval, 60)
 	retention_hours = numeric(retention_hours, 168)
 	upload_window_hours = numeric(upload_window_hours, 2)
 	lease_refresh_interval = numeric(lease_refresh_interval, 60)
 	identity_cache_ttl = numeric(identity_cache_ttl, 60)
+	provisional_retention_hours = numeric(provisional_retention_hours, 6)
 	persistent_interval = numeric(persistent_interval, 3600)
 	persistent_retry_interval = numeric(persistent_retry_interval, 300)
 	persistent_compact_interval = numeric(persistent_compact_interval, 604800)
@@ -228,6 +231,12 @@ BEGIN {
 	}
 	if (identity_cache_ttl > lease_refresh_interval) {
 		identity_cache_ttl = lease_refresh_interval
+	}
+	if (provisional_retention_hours < 1) {
+		provisional_retention_hours = 6
+	}
+	if (provisional_retention_hours > retention_hours) {
+		provisional_retention_hours = retention_hours
 	}
 	if (persistent_interval < 60) {
 		persistent_interval = 3600

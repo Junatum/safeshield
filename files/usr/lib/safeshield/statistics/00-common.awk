@@ -71,15 +71,29 @@ function normalize_mac(value,    parts, count, i, mac) {
 	return mac
 }
 
+function clear_device_identity_owner(key,    client_id, duid) {
+	client_id = device_client_id[key]
+	duid = device_duid[key]
+	if (client_id != "" && client_id_owner[client_id] == key) {
+		delete client_id_owner[client_id]
+	}
+	if (duid != "" && duid_owner[duid] == key) {
+		delete duid_owner[duid]
+	}
+}
+
 function remove_device_metadata(key) {
 	if (!(key in device_seen)) {
 		return
 	}
 
+	clear_device_identity_owner(key)
 	delete device_seen[key]
 	delete device_mac[key]
 	delete device_ip[key]
 	delete device_hostname[key]
+	delete device_client_id[key]
+	delete device_duid[key]
 	delete device_queries[key]
 	delete device_blocked[key]
 	device_count--
@@ -101,18 +115,20 @@ function remove_device(key,    composite, parts) {
 	remove_device_metadata(key)
 }
 
-function register_device(key, mac, ip, hostname,    selected) {
+function register_device(key, mac, ip, hostname, client_id, duid,    selected, owner) {
 	if (key == "") {
 		return ""
 	}
 
 	selected = key
-	if (!(selected in device_seen) && device_count >= max_devices && selected != "other") {
+	if (!(selected in device_seen) && device_count >= max_devices && selected != "other" && selected != "unknown") {
 		devices_truncated = 1
 		selected = "other"
 		mac = ""
 		ip = ""
 		hostname = "Other devices"
+		client_id = ""
+		duid = ""
 	}
 
 	if (!(selected in device_seen)) {
@@ -123,12 +139,14 @@ function register_device(key, mac, ip, hostname,    selected) {
 		device_mac[selected] = ""
 		device_ip[selected] = ""
 		device_hostname[selected] = ""
+		device_client_id[selected] = ""
+		device_duid[selected] = ""
 		device_queries[selected] = 0
 		device_blocked[selected] = 0
 		device_count++
 	}
 
-	if (selected != "other") {
+	if (selected != "other" && selected != "unknown") {
 		if (mac != "") {
 			device_mac[selected] = tolower(mac)
 		}
@@ -138,9 +156,26 @@ function register_device(key, mac, ip, hostname,    selected) {
 		if (hostname != "" && hostname != "*") {
 			device_hostname[selected] = hostname
 		}
+		if (client_id != "") {
+			owner = client_id_owner[client_id]
+			if (owner == "" || owner == selected) {
+				device_client_id[selected] = client_id
+				client_id_owner[client_id] = selected
+			}
+		}
+		if (duid != "") {
+			owner = duid_owner[duid]
+			if (owner == "" || owner == selected) {
+				device_duid[selected] = duid
+				duid_owner[duid] = selected
+			}
+		}
+	}
+	else if (selected == "other") {
+		device_hostname[selected] = "Other devices"
 	}
 	else {
-		device_hostname[selected] = "Other devices"
+		device_hostname[selected] = "Unknown devices"
 	}
 
 	return selected
