@@ -1,6 +1,7 @@
 'use strict';
 
 let core = require('core');
+let fs = require('fs');
 let ubus = require('ubus').connect();
 
 let PKG_NAME = core.PKG_NAME;
@@ -64,6 +65,14 @@ function refresh_running() {
     let data = state.data || {};
 
     return data.status == 'running';
+}
+
+function reset_statistics_upload_state() {
+    fs.unlink('/tmp/safeshield/statistics/upload.credentials');
+    fs.unlink('/tmp/safeshield/statistics/upload.entitlement');
+    fs.unlink('/tmp/safeshield/statistics/upload.pending.json');
+    fs.unlink('/tmp/safeshield/statistics/upload.pending.meta');
+    fs.unlink('/tmp/safeshield/statistics/upload.state');
 }
 
 function start_refresh_async() {
@@ -150,6 +159,7 @@ return {
     dnsmasq_running: dnsmasq_running,
     run_service_action: run_service_action,
     refresh_running: refresh_running,
+    reset_statistics_upload_state: reset_statistics_upload_state,
     start_refresh_async: start_refresh_async,
     start_local_apply_async: start_local_apply_async
 };

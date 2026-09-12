@@ -380,22 +380,36 @@ unconsumed values instead of reusing a sequence already observed by Hub. This
 distinction lets cloud ingestion reject duplicate or out-of-order snapshots
 without treating a process restart as a new dataset.
 
-When statistics are enabled, a separate uploader synchronizes the aggregate
-statistics with the SmartSafeHub Hub at `/api/v1/statistics`. The uploader gets
-a device-scoped bearer credential from the existing `/api/v1/licenses/resolve`
-response and keeps that credential only under `/tmp/safeshield/statistics/`; it
-is never written to flash or included in status output. Routine uploads run
-every five minutes and contain a consistent two-hour projection of the local
-hourly data. A full retained snapshot is sent on initial synchronization, after
-a failed upload has recovered, and periodically (approximately every six
-hours) to reconcile any missed window.
+When statistics are enabled, a separate uploader can synchronize the aggregate
+statistics with the SmartSafeHub Hub at `/api/v1/statistics`. Cloud upload is an
+entitlement-controlled feature: the Hub currently grants it to eligible PRO and
+ULTIMATE licenses in ACTIVE or TRIAL status and returns `statistics: null` for
+free, unlicensed, expired, or revoked devices. SafeShield treats that Hub response as the
+authoritative entitlement, disables network upload when it is absent, and keeps
+collecting local statistics normally. A device with no configured license key is
+blocked locally without making a statistics credential request.
+
+For an entitled device, the uploader gets a device-scoped bearer credential from
+the existing `/api/v1/licenses/resolve` response and keeps that credential only
+under `/tmp/safeshield/statistics/`; it is never written to flash or included in
+status output. Routine uploads run every five minutes and contain a consistent
+two-hour projection of the local hourly data. A full retained snapshot is sent
+on initial synchronization, after a failed upload has recovered, and periodically
+(approximately every six hours) to reconcile any missed window.
 
 The uploader preserves the exact pending JSON across network retries. If the Hub
 committed a request but the HTTP acknowledgement was lost, retrying the same
 `generation_id` and `snapshot_seq` is therefore idempotent. An HTTP 401 clears
-the cached credential, resolves a fresh one, and retries the same payload once.
-Local collection is independent of upload success, so WAN or Hub outages do not
-interrupt on-router statistics.
+the cached credential and resolves the license again. If the refreshed response
+no longer grants statistics upload, SafeShield discards the cloud pending payload
+and stops statistics POST requests. While a license key remains configured, a
+denied entitlement is rechecked at most once every 12 hours so a server-side
+reactivation can recover without waiting for the normal artifact refresh cycle.
+Changing or clearing the key through `license_update` immediately clears cached
+entitlement, credentials, pending payloads, and upload progress; the next granted
+entitlement therefore resumes with a full reconciliation. Local collection is
+independent of upload entitlement and upload success, so a free license, WAN
+outage, or Hub outage never interrupts on-router statistics.
 
 The collector implementation is split into focused AWK modules under
 `/usr/lib/safeshield/statistics/` for common helpers, recovery, client identity,

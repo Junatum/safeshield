@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.21-r3] - 2026-09-12
+
+### Changed
+
+- Gate Hub statistics synchronization on the entitlement returned by `/api/v1/licenses/resolve`; eligible PRO and ULTIMATE licenses in ACTIVE or TRIAL status continue to upload while free and unlicensed devices keep statistics local only.
+- Cache the non-secret cloud-upload entitlement in tmpfs so an explicitly ineligible device does not repeatedly request statistics credentials.
+- Recheck an explicitly denied statistics entitlement at most once every 12 hours when a license key remains configured, allowing server-side license reactivation to recover without waiting for the normal artifact refresh cycle.
+- Reset cached statistics entitlement, credentials, pending payloads, and upload progress immediately when `license_update` changes or clears the configured key so the next eligible synchronization starts with a full reconciliation.
+
+### Fixed
+
+- Stop statistics POST/re-authentication loops after the Hub returns `statistics: null`, including when a previously entitled license is rejected with HTTP 401.
+- Clear stale statistics credentials, pending cloud payloads, and prior synchronization progress when upload entitlement is removed without affecting the local statistics collector or retained local data.
+- Treat a backward wall-clock correction as immediately due for denied-entitlement revalidation so NTP adjustments cannot postpone cloud-upload recovery.
+
 ## [0.3.21-r2] - 2026-09-12
 
 ### Added

@@ -11,6 +11,7 @@ let api_error = core.api_error;
 let uci_commit_option = core.uci_commit_option;
 let uci_delete_option = core.uci_delete_option;
 let start_refresh_async = runtime.start_refresh_async;
+let reset_statistics_upload_state = runtime.reset_statistics_upload_state;
 
 function license_get_call() {
     reload_uci();
@@ -65,6 +66,7 @@ function license_update_call(request) {
         return api_error('uci_commit_failed', 'Failed to update the SafeShield license key');
     }
 
+    reset_statistics_upload_state();
     let refresh = start_refresh_async();
 
     return {

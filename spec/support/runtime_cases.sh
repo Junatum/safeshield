@@ -266,6 +266,7 @@ SS_STATISTICS_DIR="$TMP/statistics"
 SS_STATISTICS_JSON_FILE="$SS_STATISTICS_DIR/statistics.json"
 SS_STATISTICS_UPLOAD_JSON_FILE="$SS_STATISTICS_DIR/upload.json"
 SS_STATISTICS_UPLOAD_CREDENTIALS_FILE="$SS_STATISTICS_DIR/upload.credentials"
+SS_STATISTICS_UPLOAD_ENTITLEMENT_FILE="$SS_STATISTICS_DIR/upload.entitlement"
 SS_STATISTICS_UPLOAD_PENDING_FILE="$SS_STATISTICS_DIR/upload.pending.json"
 SS_STATISTICS_UPLOAD_PENDING_META_FILE="$SS_STATISTICS_DIR/upload.pending.meta"
 SS_STATISTICS_UPLOAD_STATE_FILE="$SS_STATISTICS_DIR/upload.state"
@@ -277,6 +278,9 @@ SS_HTTP_STATUS=''
 SS_STATISTICS_UPLOAD_URL='https://www.smartsafehub.com/api/v1/statistics'
 SS_STATISTICS_UPLOAD_TOKEN='token-old'
 SS_STATISTICS_UPLOAD_TOKEN_EXPIRES_IN_S=172800
+MOCK_UPLOAD_ENTITLEMENT='allowed'
+MOCK_REFRESH_RESULT='allowed'
+MOCK_DENIED_RECHECK_DUE='0'
 
 is_valid_integer() {
 	case "$1" in
@@ -290,13 +294,36 @@ ss_status_set_now() { :; }
 log_info() { :; }
 log_warn() { :; }
 log_error() { :; }
+ss_statistics_upload_denied() {
+	[ "$MOCK_UPLOAD_ENTITLEMENT" = 'denied' ]
+}
+ss_statistics_upload_denied_recheck_due() {
+	[ "$MOCK_DENIED_RECHECK_DUE" = '1' ]
+}
+ss_statistics_set_upload_entitlement() {
+	MOCK_UPLOAD_ENTITLEMENT="$1"
+}
 ss_statistics_load_upload_credentials() {
+	ss_statistics_upload_denied && return 1
 	[ -n "$SS_STATISTICS_UPLOAD_TOKEN" ]
 }
 ss_statistics_clear_upload_credentials() {
 	SS_STATISTICS_UPLOAD_TOKEN=''
 }
+ss_statistics_disable_cloud_upload() {
+	MOCK_UPLOAD_ENTITLEMENT='denied'
+	SS_STATISTICS_UPLOAD_TOKEN=''
+	rm -f "$SS_STATISTICS_UPLOAD_PENDING_FILE" "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$SS_STATISTICS_UPLOAD_STATE_FILE"
+}
 ss_statistics_refresh_upload_credentials() {
+	printf '%s\n' "$MOCK_REFRESH_RESULT" >>"$REFRESH_CALLS"
+	if [ "$MOCK_REFRESH_RESULT" = 'denied' ]; then
+		MOCK_UPLOAD_ENTITLEMENT='denied'
+		SS_STATISTICS_UPLOAD_TOKEN=''
+		rm -f "$SS_STATISTICS_UPLOAD_PENDING_FILE" "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$SS_STATISTICS_UPLOAD_STATE_FILE"
+		return 2
+	fi
+	MOCK_UPLOAD_ENTITLEMENT='allowed'
 	SS_STATISTICS_UPLOAD_URL='https://www.smartsafehub.com/api/v1/statistics'
 	SS_STATISTICS_UPLOAD_TOKEN='token-new'
 	return 0
@@ -364,11 +391,13 @@ EOF_CORE
 	HTTP_CALLS="$TMP/http.calls"
 	HTTP_CHECKSUMS="$TMP/http.checksums"
 	HTTP_AUTH="$TMP/http.auth"
+	REFRESH_CALLS="$TMP/refresh.calls"
 	MOCK_HTTP_MODE='success'
-	export HTTP_CALLS HTTP_CHECKSUMS HTTP_AUTH MOCK_HTTP_MODE
+	export HTTP_CALLS HTTP_CHECKSUMS HTTP_AUTH REFRESH_CALLS MOCK_HTTP_MODE MOCK_DENIED_RECHECK_DUE
 	: >"$HTTP_CALLS"
 	: >"$HTTP_CHECKSUMS"
 	: >"$HTTP_AUTH"
+	: >"$REFRESH_CALLS"
 
 	SS_STATS_UPLOAD_FUNCTIONS_LIB="$TMP/functions.sh"
 	SS_STATS_UPLOAD_CORE_LIB="$TMP/core.sh"
@@ -456,6 +485,83 @@ EOF_CORE
 	ss_spec_assert_eq "$(sed -n '1p' "$HTTP_AUTH")" 'Bearer token-old'
 	ss_spec_assert_eq "$(sed -n '2p' "$HTTP_AUTH")" 'Bearer token-new'
 	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+
+	# A revoked/expired entitlement stops the 401 re-authentication loop and
+	# discards only the pending cloud payload; local statistics remain untouched.
+	write_payload "$SS_STATISTICS_JSON_FILE" 5
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 5
+	upload_pending_create
+	MOCK_HTTP_MODE='unauthorized-once'
+	MOCK_REFRESH_RESULT='denied'
+	MOCK_UPLOAD_ENTITLEMENT='allowed'
+	SS_STATISTICS_UPLOAD_TOKEN='token-old'
+	export MOCK_HTTP_MODE MOCK_REFRESH_RESULT MOCK_UPLOAD_ENTITLEMENT
+	: >"$HTTP_CALLS"
+	: >"$REFRESH_CALLS"
+	DENIED_RC=0
+	upload_send_pending || DENIED_RC=$?
+	ss_spec_assert_eq "$DENIED_RC" '2'
+	ss_spec_assert_eq "$(wc -l <"$HTTP_CALLS" | tr -d ' ')" '1'
+	ss_spec_assert_eq "$(wc -l <"$REFRESH_CALLS" | tr -d ' ')" '1'
+	ss_spec_assert_eq "$MOCK_UPLOAD_ENTITLEMENT" 'denied'
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+
+	# Explicit denial prevents repeated credential resolves from the uploader.
+	ENSURE_RC=0
+	upload_ensure_credentials || ENSURE_RC=$?
+	ss_spec_assert_eq "$ENSURE_RC" '2'
+	ss_spec_assert_eq "$(wc -l <"$REFRESH_CALLS" | tr -d ' ')" '1'
+
+	# Denied entitlement stays quiet until the 12-hour recheck becomes due.
+	MOCK_UPLOAD_ENTITLEMENT='denied'
+	MOCK_REFRESH_RESULT='allowed'
+	MOCK_DENIED_RECHECK_DUE='0'
+	SS_STATISTICS_UPLOAD_TOKEN=''
+	ss_license_key='paid-license-key'
+	ss_should_terminate=0
+	: >"$REFRESH_CALLS"
+	upload_sleep() {
+		ss_should_terminate=1
+		return 1
+	}
+	main
+	ss_spec_assert_eq "$(wc -l <"$REFRESH_CALLS" | tr -d ' ')" '0'
+
+	# Once the 12-hour check is due, re-resolve entitlement immediately. A newly
+	# entitled device resumes with a full reconciliation because denial cleared
+	# the previous upload state.
+	MOCK_UPLOAD_ENTITLEMENT='denied'
+	MOCK_DENIED_RECHECK_DUE='1'
+	MOCK_HTTP_MODE='success'
+	SS_STATISTICS_UPLOAD_TOKEN=''
+	ss_should_terminate=0
+	write_payload "$SS_STATISTICS_JSON_FILE" 6
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 6
+	: >"$REFRESH_CALLS"
+	: >"$HTTP_CALLS"
+	main
+	ss_spec_assert_eq "$(wc -l <"$REFRESH_CALLS" | tr -d ' ')" '1'
+	ss_spec_assert_eq "$(wc -l <"$HTTP_CALLS" | tr -d ' ')" '1'
+	ss_spec_assert_eq "$MOCK_UPLOAD_ENTITLEMENT" 'allowed'
+
+	# An unlicensed device is blocked locally without asking the Hub for a
+	# statistics credential. The long-lived uploader can remain idle so a later
+	# license update can re-enable it without restarting the collector.
+	MOCK_UPLOAD_ENTITLEMENT='allowed'
+	MOCK_REFRESH_RESULT='allowed'
+	MOCK_DENIED_RECHECK_DUE='1'
+	SS_STATISTICS_UPLOAD_TOKEN='token-old'
+	ss_license_key=''
+	ss_should_terminate=0
+	: >"$REFRESH_CALLS"
+	upload_sleep() {
+		ss_should_terminate=1
+		return 1
+	}
+	main
+	ss_spec_assert_eq "$MOCK_UPLOAD_ENTITLEMENT" 'denied'
+	ss_spec_assert_eq "$(wc -l <"$REFRESH_CALLS" | tr -d ' ')" '0'
+	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_TOKEN" ''
 )
 
 ss_case_statistics_upload_credentials() (
@@ -465,6 +571,10 @@ ss_case_statistics_upload_credentials() (
 	mkdir -p "$TMP/statistics"
 	SS_STATISTICS_DIR="$TMP/statistics"
 	SS_STATISTICS_UPLOAD_CREDENTIALS_FILE="$SS_STATISTICS_DIR/upload.credentials"
+	SS_STATISTICS_UPLOAD_ENTITLEMENT_FILE="$SS_STATISTICS_DIR/upload.entitlement"
+	SS_STATISTICS_UPLOAD_PENDING_FILE="$SS_STATISTICS_DIR/upload.pending.json"
+	SS_STATISTICS_UPLOAD_PENDING_META_FILE="$SS_STATISTICS_DIR/upload.pending.meta"
+	SS_STATISTICS_UPLOAD_STATE_FILE="$SS_STATISTICS_DIR/upload.state"
 	SS_STATISTICS_POLL_COMMAND="$TMP/stats-poll"
 	SS_STATISTICS_REBASELINE_FILE="$SS_STATISTICS_DIR/rebaseline"
 	# shellcheck disable=SC1091
@@ -475,6 +585,12 @@ ss_case_statistics_upload_credentials() (
 			'' | *[!0-9]*) return 1 ;;
 		esac
 		[ "$1" -ge 0 ] 2>/dev/null
+	}
+
+	MOCK_NOW=1000
+	date() {
+		[ "${1:-}" = '+%s' ] || return 1
+		printf '%s\n' "$MOCK_NOW"
 	}
 
 	RESPONSE="$TMP/resolve.json"
@@ -508,6 +624,47 @@ ss_case_statistics_upload_credentials() (
 	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_URL" "$MOCK_URL"
 	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_TOKEN" "$MOCK_TOKEN"
 	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_TOKEN_EXPIRES_IN_S" "$MOCK_TTL"
+	ss_spec_assert_eq "$(ss_statistics_upload_entitlement)" 'allowed'
+
+	# `statistics: null` is authoritative: clear secrets/pending cloud state and
+	# remember the denial in tmpfs so the uploader does not re-resolve in a loop.
+	printf '%s\n' pending >"$SS_STATISTICS_UPLOAD_PENDING_FILE"
+	printf '%s\n' meta >"$SS_STATISTICS_UPLOAD_PENDING_META_FILE"
+	printf '%s\n' state >"$SS_STATISTICS_UPLOAD_STATE_FILE"
+	MOCK_URL=''
+	MOCK_TOKEN=''
+	DENIED_RC=0
+	ss_statistics_sync_upload_entitlement "$RESPONSE" || DENIED_RC=$?
+	ss_spec_assert_eq "$DENIED_RC" '2'
+	ss_spec_assert_eq "$(ss_statistics_upload_entitlement)" 'denied'
+	[ ! -e "$SS_STATISTICS_UPLOAD_CREDENTIALS_FILE" ]
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" ]
+	[ ! -e "$SS_STATISTICS_UPLOAD_STATE_FILE" ]
+	ss_spec_assert_eq "$(sed -n '2p' "$SS_STATISTICS_UPLOAD_ENTITLEMENT_FILE")" '1000'
+	if ss_statistics_upload_denied_recheck_due 43200; then
+		return 1
+	fi
+	MOCK_NOW=44199
+	if ss_statistics_upload_denied_recheck_due 43200; then
+		return 1
+	fi
+	MOCK_NOW=44200
+	ss_statistics_upload_denied_recheck_due 43200
+	MOCK_NOW=999
+	ss_statistics_upload_denied_recheck_due 43200
+	MOCK_NOW=44200
+	if ss_statistics_load_upload_credentials; then
+		return 1
+	fi
+
+	# A later entitled resolve restores upload without changing local collection.
+	MOCK_URL='https://www.smartsafehub.com/api/v1/statistics'
+	MOCK_TOKEN='statistics-token-renewed'
+	ss_statistics_sync_upload_entitlement "$RESPONSE"
+	ss_spec_assert_eq "$(ss_statistics_upload_entitlement)" 'allowed'
+	ss_statistics_load_upload_credentials
+	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_TOKEN" 'statistics-token-renewed'
 
 	MOCK_URL='https://example.invalid/api/v1/statistics'
 	if ss_statistics_store_upload_credentials "$RESPONSE"; then

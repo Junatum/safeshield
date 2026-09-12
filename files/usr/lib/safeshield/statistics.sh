@@ -171,11 +171,93 @@ ss_statistics_upload_credentials_path() {
 	printf '%s\n' "${SS_STATISTICS_UPLOAD_CREDENTIALS_FILE:-${SS_STATISTICS_DIR:-/tmp/safeshield/statistics}/upload.credentials}"
 }
 
+ss_statistics_upload_entitlement_path() {
+	printf '%s\n' "${SS_STATISTICS_UPLOAD_ENTITLEMENT_FILE:-${SS_STATISTICS_DIR:-/tmp/safeshield/statistics}/upload.entitlement}"
+}
+
+ss_statistics_set_upload_entitlement() {
+	local state="$1"
+	local path tmp old_umask checked_at
+
+	case "$state" in
+		allowed | denied) ;;
+		unknown)
+			rm -f "$(ss_statistics_upload_entitlement_path)"
+			return 0
+			;;
+		*) return 1 ;;
+	esac
+
+	checked_at="$(date +%s 2>/dev/null || printf '0')"
+	is_valid_integer "$checked_at" || checked_at=0
+	path="$(ss_statistics_upload_entitlement_path)"
+	tmp="${path}.tmp.$$"
+	mkdir -p "${path%/*}" || return 1
+	old_umask="$(umask)"
+	umask 077
+	printf '%s\n%s\n' "$state" "$checked_at" >"$tmp" || {
+		umask "$old_umask"
+		rm -f "$tmp"
+		return 1
+	}
+	mv -f "$tmp" "$path" || {
+		umask "$old_umask"
+		rm -f "$tmp"
+		return 1
+	}
+	umask "$old_umask"
+}
+
+ss_statistics_upload_entitlement() {
+	local state
+
+	state="$(sed -n '1p' "$(ss_statistics_upload_entitlement_path)" 2>/dev/null)"
+	case "$state" in
+		allowed | denied) printf '%s\n' "$state" ;;
+		*) printf '%s\n' 'unknown' ;;
+	esac
+}
+
+ss_statistics_upload_denied() {
+	[ "$(ss_statistics_upload_entitlement)" = 'denied' ]
+}
+
+ss_statistics_upload_denied_recheck_due() {
+	local interval_s="${1:-43200}"
+	local checked_at now elapsed
+
+	ss_statistics_upload_denied || return 1
+	is_valid_integer "$interval_s" || interval_s=43200
+	[ "$interval_s" -ge 60 ] 2>/dev/null || interval_s=43200
+
+	checked_at="$(sed -n '2p' "$(ss_statistics_upload_entitlement_path)" 2>/dev/null)"
+	is_valid_integer "$checked_at" || return 0
+	[ "$checked_at" -gt 0 ] 2>/dev/null || return 0
+
+	now="$(date +%s 2>/dev/null || printf '0')"
+	is_valid_integer "$now" || return 0
+	[ "$now" -gt 0 ] 2>/dev/null || return 0
+
+	# A backward wall-clock correction must not postpone entitlement recovery.
+	[ "$now" -lt "$checked_at" ] 2>/dev/null && return 0
+	elapsed=$((now - checked_at))
+	[ "$elapsed" -ge "$interval_s" ]
+}
+
 ss_statistics_clear_upload_credentials() {
 	rm -f "$(ss_statistics_upload_credentials_path)"
 	SS_STATISTICS_UPLOAD_URL=''
 	SS_STATISTICS_UPLOAD_TOKEN=''
 	SS_STATISTICS_UPLOAD_TOKEN_EXPIRES_IN_S='0'
+}
+
+ss_statistics_disable_cloud_upload() {
+	ss_statistics_clear_upload_credentials
+	rm -f \
+		"${SS_STATISTICS_UPLOAD_PENDING_FILE:-${SS_STATISTICS_DIR:-/tmp/safeshield/statistics}/upload.pending.json}" \
+		"${SS_STATISTICS_UPLOAD_PENDING_META_FILE:-${SS_STATISTICS_DIR:-/tmp/safeshield/statistics}/upload.pending.meta}" \
+		"${SS_STATISTICS_UPLOAD_STATE_FILE:-${SS_STATISTICS_DIR:-/tmp/safeshield/statistics}/upload.state}"
+	ss_statistics_set_upload_entitlement denied
 }
 
 ss_statistics_store_upload_credentials() {
@@ -217,7 +299,30 @@ ss_statistics_store_upload_credentials() {
 		return 1
 	}
 	umask "$old_umask"
+	ss_statistics_set_upload_entitlement allowed || true
 	return 0
+}
+
+ss_statistics_sync_upload_entitlement() {
+	local response="$1"
+	local url token
+
+	[ -s "$response" ] || return 1
+	url="$(ss_json_get_file "$response" '@.statistics.upload_url')"
+	token="$(ss_json_get_file "$response" '@.statistics.token')"
+
+	if [ -z "$url" ] && [ -z "$token" ]; then
+		ss_statistics_disable_cloud_upload || return 1
+		return 2
+	fi
+
+	if [ -z "$url" ] || [ -z "$token" ]; then
+		ss_statistics_clear_upload_credentials
+		ss_statistics_set_upload_entitlement unknown || true
+		return 1
+	fi
+
+	ss_statistics_store_upload_credentials "$response"
 }
 
 ss_statistics_load_upload_credentials() {
@@ -227,6 +332,10 @@ ss_statistics_load_upload_credentials() {
 	SS_STATISTICS_UPLOAD_URL=''
 	SS_STATISTICS_UPLOAD_TOKEN=''
 	SS_STATISTICS_UPLOAD_TOKEN_EXPIRES_IN_S='0'
+	ss_statistics_upload_denied && {
+		ss_statistics_clear_upload_credentials
+		return 1
+	}
 	[ -s "$path" ] || return 1
 
 	SS_STATISTICS_UPLOAD_URL="$(sed -n '1p' "$path" 2>/dev/null)"
@@ -271,11 +380,8 @@ ss_statistics_refresh_upload_credentials() {
 			break
 		}
 		if ss_http_post_json "$resolve_url" "$request" "$response" && [ -s "$response" ]; then
-			if ss_statistics_store_upload_credentials "$response"; then
-				rc=0
-			else
-				rc=1
-			fi
+			rc=0
+			ss_statistics_sync_upload_entitlement "$response" || rc=$?
 			break
 		fi
 		if [ "${SS_HTTP_STATUS:-}" = '426' ]; then

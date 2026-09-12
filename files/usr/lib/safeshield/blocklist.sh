@@ -507,7 +507,7 @@ ss_resolve_artifact_sources() {
 }
 
 ss_resolve_artifact() {
-	local url response payload retries ok
+	local url response payload retries ok statistics_entitlement_rc
 
 	SS_RESOLVE_ERROR_CODE='api_resolve_failed'
 	url='https://www.smartsafehub.com/api/v1/licenses/resolve'
@@ -563,11 +563,14 @@ ss_resolve_artifact() {
 	ss_resolved_license_status="$(ss_json_get_file "$response" '@.license.status')"
 	ss_resolved_device_profile="$(ss_json_get_file "$response" '@.device.profile')"
 
-	if command -v ss_statistics_store_upload_credentials >/dev/null 2>&1; then
-		if ! ss_statistics_store_upload_credentials "$response"; then
-			log_warn "Hub API response did not include usable statistics upload credentials"
-			ss_statistics_clear_upload_credentials
-		fi
+	if command -v ss_statistics_sync_upload_entitlement >/dev/null 2>&1; then
+		statistics_entitlement_rc=0
+		ss_statistics_sync_upload_entitlement "$response" || statistics_entitlement_rc=$?
+		case "$statistics_entitlement_rc" in
+			0) ;;
+			2) log_info "Cloud statistics upload is not enabled for the current license" ;;
+			*) log_warn "Hub API response did not include usable statistics upload credentials" ;;
+		esac
 	fi
 
 	ss_resolve_artifact_sources "$response" || {
