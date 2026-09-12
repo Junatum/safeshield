@@ -9,10 +9,10 @@ umask 077
 
 SS_STATS_UPLOAD_FUNCTIONS_LIB="${SS_STATS_UPLOAD_FUNCTIONS_LIB:-/lib/functions.sh}"
 SS_STATS_UPLOAD_CORE_LIB="${SS_STATS_UPLOAD_CORE_LIB:-/usr/lib/safeshield/core.sh}"
-SS_STATS_UPLOAD_INTERVAL_S="${SS_STATS_UPLOAD_INTERVAL_S:-300}"
+SS_STATS_UPLOAD_INTERVAL_S="${SS_STATS_UPLOAD_INTERVAL_S:-1800}"
 SS_STATS_UPLOAD_IDLE_WAIT_S="${SS_STATS_UPLOAD_IDLE_WAIT_S:-15}"
 SS_STATS_UPLOAD_RETRY_DELAY_S="${SS_STATS_UPLOAD_RETRY_DELAY_S:-2}"
-SS_STATS_UPLOAD_FULL_EVERY="${SS_STATS_UPLOAD_FULL_EVERY:-72}"
+SS_STATS_UPLOAD_FULL_EVERY="${SS_STATS_UPLOAD_FULL_EVERY:-23}"
 SS_STATS_UPLOAD_DENIED_RECHECK_S="${SS_STATS_UPLOAD_DENIED_RECHECK_S:-43200}"
 SS_STATS_UPLOAD_RESPONSE_FILE="${SS_STATS_UPLOAD_RESPONSE_FILE:-/tmp/safeshield/statistics/upload.response.json}"
 
@@ -412,13 +412,13 @@ main() {
 	[ "${ss_statistics_enabled}" = '1' ] || return 0
 	mkdir -p "$SS_STATISTICS_DIR" || return 1
 
-	is_valid_integer "$SS_STATS_UPLOAD_INTERVAL_S" || SS_STATS_UPLOAD_INTERVAL_S=300
-	[ "$SS_STATS_UPLOAD_INTERVAL_S" -ge 60 ] 2>/dev/null || SS_STATS_UPLOAD_INTERVAL_S=300
+	is_valid_integer "$SS_STATS_UPLOAD_INTERVAL_S" || SS_STATS_UPLOAD_INTERVAL_S=1800
+	[ "$SS_STATS_UPLOAD_INTERVAL_S" -ge 60 ] 2>/dev/null || SS_STATS_UPLOAD_INTERVAL_S=1800
 	is_valid_integer "$SS_STATS_UPLOAD_IDLE_WAIT_S" || SS_STATS_UPLOAD_IDLE_WAIT_S=15
 	[ "$SS_STATS_UPLOAD_IDLE_WAIT_S" -ge 1 ] 2>/dev/null || SS_STATS_UPLOAD_IDLE_WAIT_S=15
 	is_valid_integer "$SS_STATS_UPLOAD_RETRY_DELAY_S" || SS_STATS_UPLOAD_RETRY_DELAY_S=2
-	is_valid_integer "$SS_STATS_UPLOAD_FULL_EVERY" || SS_STATS_UPLOAD_FULL_EVERY=72
-	[ "$SS_STATS_UPLOAD_FULL_EVERY" -ge 1 ] 2>/dev/null || SS_STATS_UPLOAD_FULL_EVERY=72
+	is_valid_integer "$SS_STATS_UPLOAD_FULL_EVERY" || SS_STATS_UPLOAD_FULL_EVERY=23
+	[ "$SS_STATS_UPLOAD_FULL_EVERY" -ge 1 ] 2>/dev/null || SS_STATS_UPLOAD_FULL_EVERY=23
 	is_valid_integer "$SS_STATS_UPLOAD_DENIED_RECHECK_S" || SS_STATS_UPLOAD_DENIED_RECHECK_S=43200
 	[ "$SS_STATS_UPLOAD_DENIED_RECHECK_S" -ge 60 ] 2>/dev/null || SS_STATS_UPLOAD_DENIED_RECHECK_S=43200
 
@@ -441,7 +441,7 @@ main() {
 			if [ -n "${ss_license_key:-}" ] && ss_statistics_upload_denied_recheck_due "$SS_STATS_UPLOAD_DENIED_RECHECK_S"; then
 				log_info 'Rechecking Hub statistics upload entitlement'
 				# Stamp this attempt before network I/O so a failed resolve cannot
-				# turn into a five-minute retry loop while entitlement is denied.
+				# turn into a routine upload retry loop while entitlement is denied.
 				ss_statistics_set_upload_entitlement denied >/dev/null 2>&1 || true
 				entitlement_rc=0
 				ss_statistics_refresh_upload_credentials || entitlement_rc=$?

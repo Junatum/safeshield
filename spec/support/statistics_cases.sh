@@ -310,7 +310,7 @@ STATE
 	: >"$LOG"
 	ss_statistics_awk -v state_file="$LEGACY_STATE" -v json_file="$LEGACY_JSON" -v snapshot_interval=60 -v retention_hours=168 -v lease_file="$LEASES" -v fixed_now=1787950800 <"$LOG"
 	ss_spec_assert_file_contains "$LEGACY_JSON" '"totals":{"queries":3,"blocked":1}'
-	ss_spec_assert_file_contains "$LEGACY_JSON" '"queries":3,"blocked":1,"hourly":[{"bucket_start":1787950800,"queries":3,"blocked":1}]'
+	ss_spec_assert_file_contains "$LEGACY_JSON" '"queries":3,"blocked":1,"identities":[{"type":"mac","value":"aa:bb:cc:dd:ee:ff"}],"hourly":[{"bucket_start":1787950800,"queries":3,"blocked":1}]'
 	ss_spec_assert_file_contains "$LEGACY_STATE" "$(printf 'device_bucket\taa:bb:cc:dd:ee:ff\t1787950800\t3\t1')"
 
 	LATEST_STATE="$TMP/latest-state.tsv"
@@ -1058,6 +1058,7 @@ ss_case_statistics_dhcp_client_id_identity() (
 		<"$LOG"
 
 	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:02","mac":"aa:bb:cc:dd:ee:02","ip":"192.168.1.20","hostname":"jeongsug-ui-S22","identified":true,"queries":2,"blocked":0'
+	ss_spec_assert_file_contains "$JSON" '"identities":[{"type":"dhcp_client_id","value":"stable-client-1"},{"type":"mac","value":"aa:bb:cc:dd:ee:02"}]'
 	! grep -F '"id":"aa:bb:cc:dd:ee:01"' "$JSON" >/dev/null
 	! grep -F "$(printf 'device_bucket\taa:bb:cc:dd:ee:01\t')" "$STATE" >/dev/null
 	ss_spec_assert_eq "$(awk -F '\t' '$1 == "meta" { print $8 }' "$STATE")" '6'
@@ -1106,6 +1107,7 @@ ss_case_statistics_ipv6_duid_identity() (
 		<"$LOG"
 
 	ss_spec_assert_file_contains "$JSON" '"id":"aa:bb:cc:dd:ee:12","mac":"aa:bb:cc:dd:ee:12","ip":"2001:db8::2","hostname":"pixel-8","identified":true,"queries":2,"blocked":0'
+	ss_spec_assert_file_contains "$JSON" '"identities":[{"type":"dhcpv6_duid","value":"0004abcdef"},{"type":"mac","value":"aa:bb:cc:dd:ee:12"}]'
 	! grep -F '"id":"aa:bb:cc:dd:ee:11"' "$JSON" >/dev/null
 	ss_spec_assert_file_contains "$STATE" "$(printf 'device\taa:bb:cc:dd:ee:12\taa:bb:cc:dd:ee:12\t2001:db8::2\tpixel-8\t2\t0\t*\t0004abcdef')"
 )
@@ -1264,6 +1266,7 @@ DATA
 	ss_spec_assert_file_contains "$UPLOAD" '"generation_id":"generation-upload"'
 	ss_spec_assert_file_contains "$UPLOAD" '"totals":{"queries":15,"blocked":2}'
 	ss_spec_assert_file_contains "$UPLOAD" '"id":"aa:bb:cc:dd:ee:ff","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.20","hostname":"iphone","identified":true,"queries":15,"blocked":2'
+	ss_spec_assert_file_contains "$UPLOAD" '"identities":[{"type":"mac","value":"aa:bb:cc:dd:ee:ff"}]'
 	ss_spec_assert_file_contains "$UPLOAD" '"bucket_start":1787954400,"queries":7,"blocked":1'
 	ss_spec_assert_file_contains "$UPLOAD" '"bucket_start":1787958000,"queries":8,"blocked":1'
 	! grep -F '"bucket_start":1787950800' "$UPLOAD" >/dev/null

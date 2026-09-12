@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.21-r5] - 2026-09-12
+
+### Changed
+
+- Reduce routine Hub statistics synchronization from every five minutes to every 30 minutes, cutting router TLS/JSON work and backend request volume by roughly six times while keeping the two-hour recovery window.
+- Send a full retained statistics reconciliation approximately every 12 hours instead of every six hours; startup, generation changes, entitlement recovery, and upload-failure recovery still force the next eligible upload to be full.
+- Include canonical client identity metadata in statistics payloads as `identities[]`, exposing DHCP client-id, DHCPv6 DUID, and MAC aliases already tracked by the local collector so the Hub can preserve one network client across private/randomized MAC changes.
+
 ## [0.3.21-r4] - 2026-09-12
 
 ### Added

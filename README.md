@@ -365,7 +365,10 @@ resolved through the kernel ARP table, while IPv6 clients combine the kernel NDP
 neighbor cache (`ip -6 neigh show`) with odhcpd `ipv6leases` DUID metadata. A
 stable DHCP client-id or DHCPv6 DUID therefore moves retained history from an
 older private/randomized MAC to the currently observed MAC instead of exposing
-both MACs as separate devices.
+both MACs as separate devices. Identified clients include these stable identifiers
+in the Hub statistics payload as `identities[]` entries (`dhcp_client_id`,
+`dhcpv6_duid`, and `mac`) so the backend can preserve one canonical network
+client across later MAC rotations.
 
 For older retained data that predates those strong identifiers, SafeShield uses
 a conservative hostname fallback only when exactly one active MAC advertises a
@@ -402,10 +405,10 @@ blocked locally without making a statistics credential request.
 For an entitled device, the uploader gets a device-scoped bearer credential from
 the existing `/api/v1/licenses/resolve` response and keeps that credential only
 under `/tmp/safeshield/statistics/`; it is never written to flash or included in
-status output. Routine uploads run every five minutes and contain a consistent
+status output. Routine uploads run every 30 minutes and contain a consistent
 two-hour projection of the local hourly data. A full retained snapshot is sent
 on initial synchronization, after a failed upload has recovered, and periodically
-(approximately every six hours) to reconcile any missed window.
+(approximately every 12 hours) to reconcile any missed window.
 
 The uploader preserves the exact pending JSON across network retries. If the Hub
 committed a request but the HTTP acknowledgement was lost, retrying the same

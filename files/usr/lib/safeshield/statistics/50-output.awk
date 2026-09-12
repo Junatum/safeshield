@@ -15,7 +15,7 @@ function is_unknown_output_device(key) {
 	return (key == "unknown" || (device_mac[key] == "" && key ~ /^ip:/))
 }
 
-function save_json_range(path, now, first_hour, last_hour, include_empty_devices,    tmp, bucket, comma, key, identified, device_comma, composite, device_first_hour, device_last_hour, persistence_enabled, persistent, healthy, volatile_state, storage, persistence_mode, truncated, range_queries, range_blocked, device_range_queries, device_range_blocked, device_has_rows, unknown_has_rows, unknown_queries, unknown_blocked) {
+function save_json_range(path, now, first_hour, last_hour, include_empty_devices,    tmp, bucket, comma, key, identified, device_comma, identity_comma, composite, device_first_hour, device_last_hour, persistence_enabled, persistent, healthy, volatile_state, storage, persistence_mode, truncated, range_queries, range_blocked, device_range_queries, device_range_blocked, device_has_rows, unknown_has_rows, unknown_queries, unknown_blocked) {
 	if (path == "") {
 		return 1
 	}
@@ -130,7 +130,7 @@ function save_json_range(path, now, first_hour, last_hour, include_empty_devices
 		}
 
 		identified = (device_mac[key] != "") ? "true" : "false"
-		printf "%s{\"id\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"hostname\":\"%s\",\"identified\":%s,\"queries\":%d,\"blocked\":%d,\"hourly\":[", \
+		printf "%s{\"id\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"hostname\":\"%s\",\"identified\":%s,\"queries\":%d,\"blocked\":%d,\"identities\":[", \
 			comma, \
 			json_escape(key), \
 			json_escape(device_mac[key]), \
@@ -139,6 +139,23 @@ function save_json_range(path, now, first_hour, last_hour, include_empty_devices
 			identified, \
 			device_range_queries, \
 			device_range_blocked >> tmp
+
+		identity_comma = ""
+		if (device_duid[key] != "") {
+			printf "%s{\"type\":\"dhcpv6_duid\",\"value\":\"%s\"}", \
+				identity_comma, json_escape(device_duid[key]) >> tmp
+			identity_comma = ","
+		}
+		if (device_client_id[key] != "") {
+			printf "%s{\"type\":\"dhcp_client_id\",\"value\":\"%s\"}", \
+				identity_comma, json_escape(device_client_id[key]) >> tmp
+			identity_comma = ","
+		}
+		if (device_mac[key] != "") {
+			printf "%s{\"type\":\"mac\",\"value\":\"%s\"}", \
+				identity_comma, json_escape(device_mac[key]) >> tmp
+		}
+		printf "],\"hourly\":[" >> tmp
 
 		device_comma = ""
 		if (device_first_hour <= device_last_hour) {
