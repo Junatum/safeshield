@@ -15,6 +15,27 @@ Describe 'SafeShield runtime process behavior'
 		The error should equal ''
 	End
 
+	It 'uploads statistics idempotently and reconciles after failures'
+		When call ss_case_statistics_uploader
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
+	It 'stores Hub statistics upload credentials only in the runtime cache'
+		When call ss_case_statistics_upload_credentials
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
+	It 'sends the Hub statistics bearer credential as an HTTP authorization header'
+		When call ss_case_statistics_http_auth
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
 	It 'reconciles statistics runtime without disturbing refreshd'
 		When call ss_case_statistics_reconcile
 		The status should be success

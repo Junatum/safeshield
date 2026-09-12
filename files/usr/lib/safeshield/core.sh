@@ -51,6 +51,11 @@ readonly SS_LOCAL_APPLY_STATE="${SS_TMP_DIR}/local-apply.state"
 readonly SS_STATISTICS_DIR="${SS_TMP_DIR}/statistics"
 readonly SS_STATISTICS_STATE_FILE="${SS_STATISTICS_DIR}/state.tsv"
 readonly SS_STATISTICS_JSON_FILE="${SS_STATISTICS_DIR}/statistics.json"
+readonly SS_STATISTICS_UPLOAD_JSON_FILE="${SS_STATISTICS_DIR}/upload.json"
+readonly SS_STATISTICS_UPLOAD_CREDENTIALS_FILE="${SS_STATISTICS_DIR}/upload.credentials"
+readonly SS_STATISTICS_UPLOAD_PENDING_FILE="${SS_STATISTICS_DIR}/upload.pending.json"
+readonly SS_STATISTICS_UPLOAD_PENDING_META_FILE="${SS_STATISTICS_DIR}/upload.pending.meta"
+readonly SS_STATISTICS_UPLOAD_STATE_FILE="${SS_STATISTICS_DIR}/upload.state"
 readonly SS_STATISTICS_DNSMASQ_CONF="${SS_DNSMASQ_DIR}/safeshield.statistics.conf"
 
 # shellcheck disable=SC1091

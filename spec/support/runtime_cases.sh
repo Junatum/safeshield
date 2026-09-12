@@ -77,6 +77,7 @@ ss_statistics_retention_hours=168
 SS_STATISTICS_DIR='$TMP/statistics'
 SS_STATISTICS_STATE_FILE='$TMP/statistics/state.tsv'
 SS_STATISTICS_JSON_FILE='$TMP/statistics/statistics.json'
+SS_STATISTICS_UPLOAD_JSON_FILE='$TMP/statistics/upload.json'
 SS_IDENTITY_PROFILE='gl_mt300n_v2'
 . '$SS_SPEC_ROOT/files/usr/lib/safeshield/statistics.sh'
 ss_load_config() { return 0; }
@@ -138,6 +139,8 @@ EOF_IP
 	ss_spec_assert_file_line "$AWK_ARGS_FILE" "$SS_SPEC_ROOT/files/usr/lib/safeshield/statistics/90-main.awk"
 	ss_spec_assert_file_line "$AWK_ARGS_FILE" 'persistent_state_file='
 	ss_spec_assert_file_line "$AWK_ARGS_FILE" 'persistent_journal_file='
+	ss_spec_assert_file_line "$AWK_ARGS_FILE" "upload_json_file=$TMP/statistics/upload.json"
+	ss_spec_assert_file_line "$AWK_ARGS_FILE" 'upload_window_hours=2'
 	ss_spec_assert_file_line "$AWK_INPUT_FILE" 'snapshot	runtime-instance	udp	128	1	0	0	10	2'
 	ss_spec_assert_file_line "$AWK_INPUT_FILE" 'client	192.168.1.2	10	2'
 	ss_spec_assert_eq "$(cat "$POLL_COUNT_FILE")" '1'
@@ -212,6 +215,7 @@ CONFIG
 	[ ! -e "$SS_STATISTICS_DNSMASQ_CONF" ]
 	[ -f "$SS_STATISTICS_REBASELINE_FILE" ]
 	ss_spec_assert_file_line "$CALLS" 'procd_kill safeshield statistics'
+	ss_spec_assert_file_line "$CALLS" 'procd_kill safeshield statistics-upload'
 	ss_spec_assert_file_line "$CALLS" 'dnsmasq_restart'
 	! grep -Fx 'procd_kill safeshield' "$CALLS" >/dev/null
 
@@ -222,6 +226,8 @@ CONFIG
 	ss_spec_assert_file_line "$CALLS" 'require_supported_dnsmasq'
 	ss_spec_assert_file_line "$CALLS" 'procd_open_service safeshield'
 	ss_spec_assert_file_line "$CALLS" 'procd_open_instance statistics'
+	ss_spec_assert_file_line "$CALLS" 'procd_open_instance statistics-upload'
+	ss_spec_assert_file_line "$CALLS" 'procd_set_param command /usr/libexec/safeshield-statistics-uploader'
 	ss_spec_assert_file_line "$CALLS" 'procd_close_service add'
 	! grep -Fx 'dnsmasq_restart' "$CALLS" >/dev/null
 	! grep -F 'procd_kill safeshield' "$CALLS" >/dev/null
@@ -230,6 +236,7 @@ CONFIG
 	ss_statistics_reconcile_runtime
 	! grep -Fx 'dnsmasq_restart' "$CALLS" >/dev/null
 	ss_spec_assert_file_line "$CALLS" 'procd_open_instance statistics'
+	ss_spec_assert_file_line "$CALLS" 'procd_open_instance statistics-upload'
 
 	DNSMASQ_PATCHED=0
 	ss_statistics_enabled=1
@@ -239,8 +246,317 @@ CONFIG
 	[ -f "$SS_STATISTICS_REBASELINE_FILE" ]
 	! grep -F 'uci ' "$CALLS" >/dev/null
 	ss_spec_assert_file_line "$CALLS" 'procd_kill safeshield statistics'
+	ss_spec_assert_file_line "$CALLS" 'procd_kill safeshield statistics-upload'
 	! grep -F 'procd_open_instance statistics' "$CALLS" >/dev/null
 
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield/config.uc" "changed_names[0] == 'statistics_enabled'"
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield/config.uc" "run_service_action('reconcile_statistics', 60000)"
+)
+
+ss_case_statistics_uploader() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	mkdir -p "$TMP/statistics"
+	cat >"$TMP/functions.sh" <<'EOF_FUNCTIONS'
+# test stub
+EOF_FUNCTIONS
+	cat >"$TMP/core.sh" <<'EOF_CORE'
+SS_STATISTICS_DIR="$TMP/statistics"
+SS_STATISTICS_JSON_FILE="$SS_STATISTICS_DIR/statistics.json"
+SS_STATISTICS_UPLOAD_JSON_FILE="$SS_STATISTICS_DIR/upload.json"
+SS_STATISTICS_UPLOAD_CREDENTIALS_FILE="$SS_STATISTICS_DIR/upload.credentials"
+SS_STATISTICS_UPLOAD_PENDING_FILE="$SS_STATISTICS_DIR/upload.pending.json"
+SS_STATISTICS_UPLOAD_PENDING_META_FILE="$SS_STATISTICS_DIR/upload.pending.meta"
+SS_STATISTICS_UPLOAD_STATE_FILE="$SS_STATISTICS_DIR/upload.state"
+ss_enabled=1
+ss_statistics_enabled=1
+ss_download_retry=3
+ss_download_timeout=10
+SS_HTTP_STATUS=''
+SS_STATISTICS_UPLOAD_URL='https://www.smartsafehub.com/api/v1/statistics'
+SS_STATISTICS_UPLOAD_TOKEN='token-old'
+SS_STATISTICS_UPLOAD_TOKEN_EXPIRES_IN_S=172800
+
+is_valid_integer() {
+	case "$1" in
+		'' | *[!0-9]*) return 1 ;;
+	esac
+	[ "$1" -ge 0 ] 2>/dev/null
+}
+ss_load_config() { return 0; }
+ss_status_set() { :; }
+ss_status_set_now() { :; }
+log_info() { :; }
+log_warn() { :; }
+log_error() { :; }
+ss_statistics_load_upload_credentials() {
+	[ -n "$SS_STATISTICS_UPLOAD_TOKEN" ]
+}
+ss_statistics_clear_upload_credentials() {
+	SS_STATISTICS_UPLOAD_TOKEN=''
+}
+ss_statistics_refresh_upload_credentials() {
+	SS_STATISTICS_UPLOAD_URL='https://www.smartsafehub.com/api/v1/statistics'
+	SS_STATISTICS_UPLOAD_TOKEN='token-new'
+	return 0
+}
+ss_json_get_file() {
+	local file="$1"
+	local expr="$2"
+	case "$expr" in
+		'@.schema.name') sed -n 's/.*"schema":{"name":"\([^"]*\)".*/\1/p' "$file" ;;
+		'@.schema.version') sed -n 's/.*"schema":{"name":"[^"]*","version":\([0-9][0-9]*\)}.*/\1/p' "$file" ;;
+		'@.generation_id') sed -n 's/.*"generation_id":"\([^"]*\)".*/\1/p' "$file" ;;
+		'@.snapshot_seq') sed -n 's/.*"snapshot_seq":\([0-9][0-9]*\).*/\1/p' "$file" ;;
+		'@.status') sed -n 's/.*"status":"\([^"]*\)".*/\1/p' "$file" ;;
+		'@.last_snapshot_seq') sed -n 's/.*"last_snapshot_seq":\([0-9][0-9]*\).*/\1/p' "$file" ;;
+		*) return 1 ;;
+	esac
+}
+ss_http_post_json() {
+	local url="$1"
+	local payload="$2"
+	local out="$3"
+	local authorization="${4:-}"
+	local call generation seq
+	call=0
+	[ -s "$HTTP_CALLS" ] && call="$(wc -l <"$HTTP_CALLS" | tr -d ' ')"
+	call=$((call + 1))
+	printf '%s\n' "$call" >>"$HTTP_CALLS"
+	cksum "$payload" | awk '{print $1 ":" $2}' >>"$HTTP_CHECKSUMS"
+	printf '%s\n' "$authorization" >>"$HTTP_AUTH"
+
+	case "$MOCK_HTTP_MODE" in
+		fail-once)
+			if [ "$call" -eq 1 ]; then
+				SS_HTTP_STATUS='503'
+				return 1
+			fi
+			;;
+		always-fail)
+			SS_HTTP_STATUS='503'
+			return 1
+			;;
+		unauthorized-once)
+			if [ "$call" -eq 1 ]; then
+				SS_HTTP_STATUS='401'
+				return 1
+			fi
+			;;
+	esac
+
+	generation="$(ss_json_get_file "$payload" '@.generation_id')"
+	seq="$(ss_json_get_file "$payload" '@.snapshot_seq')"
+	printf '{"status":"applied","generation_id":"%s","last_snapshot_seq":%s}\n' "$generation" "$seq" >"$out"
+	SS_HTTP_STATUS='200'
+	return 0
+}
+EOF_CORE
+
+	# Expand only the test-root path while preserving shell variables for runtime.
+	sed -i.bak "s|\$TMP|$TMP|g" "$TMP/core.sh" 2>/dev/null || {
+		sed "s|\$TMP|$TMP|g" "$TMP/core.sh" >"$TMP/core.expanded"
+		mv "$TMP/core.expanded" "$TMP/core.sh"
+	}
+	rm -f "$TMP/core.sh.bak"
+
+	HTTP_CALLS="$TMP/http.calls"
+	HTTP_CHECKSUMS="$TMP/http.checksums"
+	HTTP_AUTH="$TMP/http.auth"
+	MOCK_HTTP_MODE='success'
+	export HTTP_CALLS HTTP_CHECKSUMS HTTP_AUTH MOCK_HTTP_MODE
+	: >"$HTTP_CALLS"
+	: >"$HTTP_CHECKSUMS"
+	: >"$HTTP_AUTH"
+
+	SS_STATS_UPLOAD_FUNCTIONS_LIB="$TMP/functions.sh"
+	SS_STATS_UPLOAD_CORE_LIB="$TMP/core.sh"
+	SS_STATS_UPLOAD_LIBRARY_ONLY=1
+	SS_STATS_UPLOAD_RETRY_DELAY_S=0
+	SS_STATS_UPLOAD_FULL_EVERY=72
+	SS_STATS_UPLOAD_RESPONSE_FILE="$TMP/statistics/upload.response.json"
+	export SS_STATS_UPLOAD_FUNCTIONS_LIB SS_STATS_UPLOAD_CORE_LIB SS_STATS_UPLOAD_LIBRARY_ONLY
+	export SS_STATS_UPLOAD_RETRY_DELAY_S SS_STATS_UPLOAD_FULL_EVERY SS_STATS_UPLOAD_RESPONSE_FILE
+	# shellcheck disable=SC1090
+	. "$SS_SPEC_ROOT/files/usr/libexec/safeshield-statistics-uploader"
+
+	write_payload() {
+		path="$1"
+		seq="$2"
+		printf '{"schema":{"name":"safeshield.statistics","version":3},"generation_id":"generation-upload","snapshot_seq":%s}\n' "$seq" >"$path"
+	}
+
+	write_payload "$SS_STATISTICS_JSON_FILE" 1
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 1
+	upload_pending_create
+	ss_spec_assert_file_contains "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$(printf 'full\tgeneration-upload\t1')"
+
+	MOCK_HTTP_MODE='fail-once'
+	export MOCK_HTTP_MODE
+	: >"$HTTP_CALLS"
+	: >"$HTTP_CHECKSUMS"
+	upload_send_pending
+	ss_spec_assert_eq "$(wc -l <"$HTTP_CALLS" | tr -d ' ')" '2'
+	ss_spec_assert_eq "$(sort -u "$HTTP_CHECKSUMS" | wc -l | tr -d ' ')" '1'
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+	upload_state_load
+	ss_spec_assert_eq "$upload_state_last_full_seq" '1'
+	ss_spec_assert_eq "$upload_state_needs_full" '0'
+
+	write_payload "$SS_STATISTICS_JSON_FILE" 2
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 1
+	if upload_pending_create; then
+		return 1
+	fi
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 2
+	upload_pending_create
+	ss_spec_assert_file_contains "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$(printf 'recent\tgeneration-upload\t2')"
+	MOCK_HTTP_MODE='always-fail'
+	export MOCK_HTTP_MODE
+	ss_download_retry=2
+	: >"$HTTP_CALLS"
+	if upload_send_pending; then
+		return 1
+	fi
+	[ -s "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+	upload_state_load
+	ss_spec_assert_eq "$upload_state_needs_full" '1'
+
+	MOCK_HTTP_MODE='success'
+	export MOCK_HTTP_MODE
+	: >"$HTTP_CALLS"
+	upload_send_pending
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+	upload_state_load
+	ss_spec_assert_eq "$upload_state_needs_full" '1'
+
+	write_payload "$SS_STATISTICS_JSON_FILE" 3
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 3
+	upload_pending_create
+	ss_spec_assert_file_contains "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$(printf 'full\tgeneration-upload\t3')"
+	upload_pending_clear
+
+	# A 401 refreshes credentials once and retries the exact pending snapshot.
+	upload_state_needs_full=0
+	upload_state_last_full_seq=1
+	upload_state_last_success_seq=2
+	upload_state_save
+	write_payload "$SS_STATISTICS_JSON_FILE" 4
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 4
+	upload_pending_create
+	MOCK_HTTP_MODE='unauthorized-once'
+	export MOCK_HTTP_MODE
+	SS_STATISTICS_UPLOAD_TOKEN='token-old'
+	ss_download_retry=3
+	: >"$HTTP_CALLS"
+	: >"$HTTP_AUTH"
+	upload_send_pending
+	ss_spec_assert_eq "$(sed -n '1p' "$HTTP_AUTH")" 'Bearer token-old'
+	ss_spec_assert_eq "$(sed -n '2p' "$HTTP_AUTH")" 'Bearer token-new'
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+)
+
+ss_case_statistics_upload_credentials() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	mkdir -p "$TMP/statistics"
+	SS_STATISTICS_DIR="$TMP/statistics"
+	SS_STATISTICS_UPLOAD_CREDENTIALS_FILE="$SS_STATISTICS_DIR/upload.credentials"
+	SS_STATISTICS_POLL_COMMAND="$TMP/stats-poll"
+	SS_STATISTICS_REBASELINE_FILE="$SS_STATISTICS_DIR/rebaseline"
+	# shellcheck disable=SC1091
+	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/statistics.sh"
+
+	is_valid_integer() {
+		case "$1" in
+			'' | *[!0-9]*) return 1 ;;
+		esac
+		[ "$1" -ge 0 ] 2>/dev/null
+	}
+
+	RESPONSE="$TMP/resolve.json"
+	printf '%s\n' '{}' >"$RESPONSE"
+	MOCK_URL='https://www.smartsafehub.com/api/v1/statistics'
+	MOCK_TOKEN='statistics-token'
+	MOCK_TTL='172800'
+	ss_json_get_file() {
+		case "$2" in
+			'@.statistics.upload_url') printf '%s\n' "$MOCK_URL" ;;
+			'@.statistics.token') printf '%s\n' "$MOCK_TOKEN" ;;
+			'@.statistics.token_expires_in_s') printf '%s\n' "$MOCK_TTL" ;;
+			*) return 1 ;;
+		esac
+	}
+
+	BEFORE_UMASK="$(umask)"
+	ss_statistics_store_upload_credentials "$RESPONSE"
+	ss_spec_assert_eq "$(umask)" "$BEFORE_UMASK"
+	[ -s "$SS_STATISTICS_UPLOAD_CREDENTIALS_FILE" ]
+	ss_spec_assert_eq "$(sed -n '1p' "$SS_STATISTICS_UPLOAD_CREDENTIALS_FILE")" "$MOCK_URL"
+	ss_spec_assert_eq "$(sed -n '2p' "$SS_STATISTICS_UPLOAD_CREDENTIALS_FILE")" "$MOCK_TOKEN"
+	ss_spec_assert_eq "$(sed -n '3p' "$SS_STATISTICS_UPLOAD_CREDENTIALS_FILE")" "$MOCK_TTL"
+	MODE="$(stat -c '%a' "$SS_STATISTICS_UPLOAD_CREDENTIALS_FILE" 2>/dev/null || stat -f '%Lp' "$SS_STATISTICS_UPLOAD_CREDENTIALS_FILE")"
+	ss_spec_assert_eq "$MODE" '600'
+
+	SS_STATISTICS_UPLOAD_URL=''
+	SS_STATISTICS_UPLOAD_TOKEN=''
+	SS_STATISTICS_UPLOAD_TOKEN_EXPIRES_IN_S='0'
+	ss_statistics_load_upload_credentials
+	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_URL" "$MOCK_URL"
+	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_TOKEN" "$MOCK_TOKEN"
+	ss_spec_assert_eq "$SS_STATISTICS_UPLOAD_TOKEN_EXPIRES_IN_S" "$MOCK_TTL"
+
+	MOCK_URL='https://example.invalid/api/v1/statistics'
+	if ss_statistics_store_upload_credentials "$RESPONSE"; then
+		return 1
+	fi
+	MOCK_URL='https://www.smartsafehub.com/api/v1/statistics'
+	MOCK_TOKEN='token with whitespace'
+	if ss_statistics_store_upload_credentials "$RESPONSE"; then
+		return 1
+	fi
+)
+
+ss_case_statistics_http_auth() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	mkdir -p "$TMP/bin"
+	PAYLOAD="$TMP/payload.json"
+	OUTPUT="$TMP/response.json"
+	CURL_ARGS="$TMP/curl.args"
+	printf '%s\n' '{}' >"$PAYLOAD"
+
+	cat >"$TMP/bin/curl" <<'EOF_CURL'
+#!/bin/sh
+out=''
+prev=''
+for arg in "$@"; do
+	printf '%s\n' "$arg" >>"$CURL_ARGS"
+	if [ "$prev" = '-o' ]; then
+		out="$arg"
+	fi
+	prev="$arg"
+done
+[ -n "$out" ] && printf '%s\n' '{}' >"$out"
+printf '%s' '200'
+EOF_CURL
+	chmod 755 "$TMP/bin/curl"
+	export CURL_ARGS
+
+	ss_download_timeout=10
+	command_exists() { command -v "$1" >/dev/null 2>&1; }
+	# shellcheck disable=SC1091
+	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/blocklist.sh"
+
+	PATH="$TMP/bin:$PATH"
+	export PATH
+	ss_http_post_json 'https://www.smartsafehub.com/api/v1/statistics' "$PAYLOAD" "$OUTPUT" 'Bearer statistics-token'
+	ss_spec_assert_file_line "$CURL_ARGS" 'Authorization: Bearer statistics-token'
+	ss_spec_assert_file_line "$CURL_ARGS" "@${PAYLOAD}"
+	ss_spec_assert_eq "$SS_HTTP_STATUS" '200'
+	[ -s "$OUTPUT" ]
 )

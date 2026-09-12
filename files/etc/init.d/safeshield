@@ -16,7 +16,7 @@ IPKG_INSTROOT="${IPKG_INSTROOT:-}"
 export IPKG_INSTROOT
 
 readonly PKG_NAME='safeshield'
-readonly PKG_VERSION='0.3.21-r1'
+readonly PKG_VERSION='0.3.21-r2'
 
 if type extra_command >/dev/null 2>&1; then
 	extra_command 'apply_local_rules' 'Apply local allow/block rules using the cached Hub artifact'
@@ -159,6 +159,7 @@ start_service() {
 
 	if [ "${ss_statistics_enabled}" = "1" ]; then
 		ss_statistics_add_procd_instance
+		ss_statistics_add_upload_procd_instance
 	fi
 }
 
@@ -409,7 +410,7 @@ statistics() {
 	if [ -s "${SS_STATISTICS_JSON_FILE}" ]; then
 		cat "${SS_STATISTICS_JSON_FILE}"
 	else
-		printf '%s\n' '{"schema":{"name":"safeshield.statistics","version":1},"volatile":true,"totals":{"queries":0,"blocked":0},"hourly":[]}'
+		printf '%s\n' '{"schema":{"name":"safeshield.statistics","version":3},"volatile":true,"generation_id":"","snapshot_seq":0,"totals":{"queries":0,"blocked":0},"hourly":[],"devices":[]}'
 	fi
 }
 

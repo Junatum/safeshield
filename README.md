@@ -100,13 +100,13 @@ opkg print-architecture
 Add the repository:
 
 ```sh
-echo "src/gz smartsafehub https://junatum.github.io/openwrt-packages/stable/packages/<architecture>/smartsafehub" >> /etc/opkg/customfeeds.conf
+echo "src/gz smartsafehub https://repo.smartsafehub.com/stable/packages/<architecture>/smartsafehub" >> /etc/opkg/customfeeds.conf
 ```
 
 Example (for `x86_64`):
 
 ```sh
-echo "src/gz smartsafehub https://junatum.github.io/openwrt-packages/stable/packages/x86_64/smartsafehub" >> /etc/opkg/customfeeds.conf
+echo "src/gz smartsafehub https://repo.smartsafehub.com/stable/packages/x86_64/smartsafehub" >> /etc/opkg/customfeeds.conf
 ```
 
 Update package lists:
@@ -353,7 +353,7 @@ ubus call safeshield statistics
 /etc/init.d/safeshield statistics
 ```
 
-Statistics are collected from live dnsmasq query logging. Raw queried domains
+Statistics are collected from dnsmasq cumulative SafeShield UBus counters. Raw queried domains
 are never written to the statistics state. Loopback (`127.0.0.0/8` and `::1`)
 queries are excluded so SafeShield's own DNS health checks do not inflate user
 query or blocked counters. In addition to global hourly query/block counters,
@@ -372,8 +372,30 @@ Each retained statistics dataset has a stable `generation_id`. `started_at` is
 the creation time of that retained dataset and is restored together with the
 generation when the collector restarts. `session_started_at` is the start time
 of the current collector process and therefore changes on every collector
-restart. This distinction lets cloud ingestion upsert repeated snapshots from
-the same generation without treating a process restart as a new dataset.
+restart. `snapshot_seq` is monotonically increasing within the generation and
+is the ordering/idempotency key for Hub ingestion; wall-clock `updated_at` is
+kept only as event metadata. Persistence-enabled devices reserve sequence
+ranges ahead in `/etc/safeshield/statistics-sequence.tsv`, so a reboot can skip
+unconsumed values instead of reusing a sequence already observed by Hub. This
+distinction lets cloud ingestion reject duplicate or out-of-order snapshots
+without treating a process restart as a new dataset.
+
+When statistics are enabled, a separate uploader synchronizes the aggregate
+statistics with the SmartSafeHub Hub at `/api/v1/statistics`. The uploader gets
+a device-scoped bearer credential from the existing `/api/v1/licenses/resolve`
+response and keeps that credential only under `/tmp/safeshield/statistics/`; it
+is never written to flash or included in status output. Routine uploads run
+every five minutes and contain a consistent two-hour projection of the local
+hourly data. A full retained snapshot is sent on initial synchronization, after
+a failed upload has recovered, and periodically (approximately every six
+hours) to reconcile any missed window.
+
+The uploader preserves the exact pending JSON across network retries. If the Hub
+committed a request but the HTTP acknowledgement was lost, retrying the same
+`generation_id` and `snapshot_seq` is therefore idempotent. An HTTP 401 clears
+the cached credential, resolves a fresh one, and retries the same payload once.
+Local collection is independent of upload success, so WAN or Hub outages do not
+interrupt on-router statistics.
 
 The collector implementation is split into focused AWK modules under
 `/usr/lib/safeshield/statistics/` for common helpers, recovery, client identity,

@@ -3,4 +3,5 @@
 /etc/safeshield/blocklist
 /etc/safeshield/statistics-state.tsv
 /etc/safeshield/statistics-journal.tsv
+/etc/safeshield/statistics-sequence.tsv
 /etc/config/safeshield

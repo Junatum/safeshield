@@ -3,11 +3,12 @@
 let statistics = require('statistics');
 
 let result = statistics.build();
-assert(result.schema.name == 'safeshield.statistics' && result.schema.version == 2, 'statistics schema is preserved');
+assert(result.schema.name == 'safeshield.statistics' && result.schema.version == 3, 'statistics schema is preserved');
 assert(result.enabled == true && result.effective_enabled == true && result.available == true, 'configured and effective statistics availability are reported');
 assert(result.collector_running == true, 'statistics collector state is reported');
 assert(result.snapshot_interval_s == 30 && result.effective_snapshot_interval_s == 30 && result.retention_hours == 24, 'statistics config values are normalized');
 assert(result.generation_id == 'generation-test', 'statistics generation is preserved');
+assert(result.snapshot_seq == 42, 'statistics snapshot sequence is preserved');
 assert(result.started_at == 100 && result.updated_at == 200, 'statistics timestamps are normalized');
 assert(result.totals.queries == 120 && result.totals.blocked == 12, 'statistics totals are normalized');
 assert(result.source.backend == 'dnsmasq_ubus' && result.source.available == true, 'statistics source backend is normalized');

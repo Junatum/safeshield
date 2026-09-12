@@ -285,7 +285,7 @@ daemon.info dnsmasq[1]: 11 192.168.1.20/50001 config ads.example is 0.0.0.0
 LOGS
 	ss_statistics_awk -v state_file="$STATE" -v json_file="$JSON" -v persistent_state_file="$PERSISTENT" -v persistent_interval=3600 -v snapshot_interval=60 -v retention_hours=168 -v lease_file="$LEASES" -v fixed_now=1787950800 <"$LOG"
 	ss_spec_assert_nonempty "$PERSISTENT"
-	ss_spec_assert_file_contains "$JSON" '"version":2'
+	ss_spec_assert_file_contains "$JSON" '"version":3'
 	ss_spec_assert_file_contains "$JSON" '"volatile":false'
 	ss_spec_assert_file_contains "$JSON" '"storage":"tmpfs+flash"'
 	ss_spec_assert_file_contains "$JSON" '"persistent":true'
@@ -673,9 +673,9 @@ ss_case_statistics_generation() (
 		-v fixed_now=1787950800 \
 		<"$LOG"
 
-	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-one"'
+	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-one","snapshot_seq":1'
 	ss_spec_assert_file_contains "$JSON" '"started_at":1787950800,"session_started_at":1787950800'
-	ss_spec_assert_eq "$(awk -F '\t' '$1 == "meta" { print $8 " " $15 }' "$STATE")" '4 generation-one'
+	ss_spec_assert_eq "$(awk -F '\t' '$1 == "meta" { print $8 " " $15 " " $16 }' "$STATE")" '5 generation-one 1'
 
 	ss_statistics_awk \
 		-v state_file="$STATE" \
@@ -688,7 +688,7 @@ ss_case_statistics_generation() (
 		-v fixed_now=1787950860 \
 		<"$LOG"
 
-	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-one"'
+	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-one","snapshot_seq":2'
 	ss_spec_assert_file_contains "$JSON" '"started_at":1787950800,"session_started_at":1787950860'
 	! grep -F '"generation_id":"generation-two"' "$JSON" >/dev/null
 
@@ -704,8 +704,229 @@ ss_case_statistics_generation() (
 		-v fixed_now=1787950920 \
 		<"$LOG"
 
-	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-two"'
+	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-two","snapshot_seq":1'
 	ss_spec_assert_file_contains "$JSON" '"started_at":1787950920,"session_started_at":1787950920'
+)
+
+ss_case_statistics_snapshot_sequence() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	PERSISTENT="$TMP/statistics-state.tsv"
+	SEQUENCE="$TMP/statistics-sequence.tsv"
+	LEASES="$TMP/dhcp.leases"
+	ARP="$TMP/arp"
+	LOG="$TMP/dnsmasq.log"
+	: >"$LEASES"
+	printf '%s\n' 'IP address       HW type     Flags       HW address            Mask     Device' >"$ARP"
+	: >"$LOG"
+
+	# Persistence-enabled generations reserve sequence numbers ahead on durable
+	# storage, but ordinary snapshots consume the reservation without rewriting it.
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v persistent_state_file="$PERSISTENT" \
+		-v sequence_file="$SEQUENCE" \
+		-v snapshot_seq_reservation_size=64 \
+		-v persistent_interval=3600 \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='generation-sequence' \
+		-v fixed_now=1787950800 \
+		<"$LOG"
+
+	first_seq="$(sed -n 's/.*"snapshot_seq":\([0-9][0-9]*\).*/\1/p' "$JSON")"
+	ss_spec_assert_eq "$first_seq" '2'
+	ss_spec_assert_eq "$(cat "$SEQUENCE")" "$(printf 'reserve\tgeneration-sequence\t64')"
+
+	# A collector restart in the same boot restores the exact tmpfs sequence and
+	# therefore consumes the next value without burning the unused reservation.
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v persistent_state_file="$PERSISTENT" \
+		-v sequence_file="$SEQUENCE" \
+		-v snapshot_seq_reservation_size=64 \
+		-v persistent_interval=3600 \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='unused-restart-candidate' \
+		-v fixed_now=1787950860 \
+		<"$LOG"
+	second_seq="$(sed -n 's/.*"snapshot_seq":\([0-9][0-9]*\).*/\1/p' "$JSON")"
+	ss_spec_assert_eq "$second_seq" '4'
+
+	# Simulate a reboot by dropping tmpfs. Flash recovery skips the remainder of
+	# the previously reserved range before emitting another Hub-visible snapshot.
+	rm -f "$STATE" "$JSON"
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v persistent_state_file="$PERSISTENT" \
+		-v sequence_file="$SEQUENCE" \
+		-v snapshot_seq_reservation_size=64 \
+		-v persistent_interval=3600 \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='unused-reboot-candidate' \
+		-v fixed_now=1787954400 \
+		<"$LOG"
+	reboot_seq="$(sed -n 's/.*"snapshot_seq":\([0-9][0-9]*\).*/\1/p' "$JSON")"
+	[ "$reboot_seq" -gt 64 ]
+	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-sequence"'
+	ss_spec_assert_file_line "$SS_SPEC_ROOT/files/lib/upgrade/keep.d/safeshield" '/etc/safeshield/statistics-sequence.tsv'
+)
+
+ss_case_statistics_snapshot_freshness() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	PERSISTENT="$TMP/statistics-state.tsv"
+	SEQUENCE="$TMP/statistics-sequence.tsv"
+	LEASES="$TMP/dhcp.leases"
+	ARP="$TMP/arp"
+	LOG="$TMP/dnsmasq.log"
+	: >"$LEASES"
+	printf '%s\n' 'IP address       HW type     Flags       HW address            Mask     Device' >"$ARP"
+	: >"$LOG"
+
+	# tmpfs has the newer sequence but an older wall-clock timestamp, which can
+	# happen after NTP corrects the clock backwards. Sequence freshness must win.
+	cat >"$STATE" <<'STATE'
+meta	1787950800	1787950860	7	1	0	0	5	1787950860	1	0	0	0	0	generation-clock	10	64
+bucket	1787950800	7	1
+STATE
+	cat >"$PERSISTENT" <<'STATE'
+meta	1787950800	1787958000	1	0	0	1787958000	5	1787958000	1	0	0	1787958000	1787954400	generation-clock	9	64
+bucket	1787950800	1	0
+STATE
+	printf 'reserve\tgeneration-clock\t64\n' >"$SEQUENCE"
+
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v persistent_state_file="$PERSISTENT" \
+		-v sequence_file="$SEQUENCE" \
+		-v snapshot_seq_reservation_size=64 \
+		-v persistent_interval=3600 \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='unused-clock-candidate' \
+		-v fixed_now=1787950920 \
+		<"$LOG"
+
+	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-clock"'
+	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":7,"blocked":1}'
+	! grep -F '"totals":{"queries":1,"blocked":0}' "$JSON" >/dev/null
+)
+
+ss_case_statistics_journal_sequence_freshness() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	PERSISTENT="$TMP/statistics-state.tsv"
+	JOURNAL="$TMP/statistics-journal.tsv"
+	SEQUENCE="$TMP/statistics-sequence.tsv"
+	LEASES="$TMP/dhcp.leases"
+	ARP="$TMP/arp"
+	LOG="$TMP/dnsmasq.log"
+	: >"$LEASES"
+	printf '%s\n' 'IP address       HW type     Flags       HW address            Mask     Device' >"$ARP"
+	: >"$LOG"
+
+	# The base state has a later wall-clock timestamp, while the committed journal
+	# transaction has the newer sequence. This models a backward NTP correction.
+	cat >"$PERSISTENT" <<'STATE'
+meta	1787950800	1787958000	1	0	0	1787958000	5	1787958000	1	0	0	1787958000	1787954400	generation-journal-clock	9	64
+bucket	1787950800	1	0
+STATE
+	cat >"$JOURNAL" <<'JOURNAL'
+begin	txn-10	3	1787951000	1787950800	0	1787951000	1787950800	1	0	0	generation-journal-clock	10	64
+bucket	1787950800	7	1
+commit	txn-10
+JOURNAL
+	printf 'reserve\tgeneration-journal-clock\t64\n' >"$SEQUENCE"
+
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v persistent_state_file="$PERSISTENT" \
+		-v persistent_journal_file="$JOURNAL" \
+		-v sequence_file="$SEQUENCE" \
+		-v snapshot_seq_reservation_size=64 \
+		-v persistent_interval=3600 \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='unused-journal-clock-candidate' \
+		-v fixed_now=1787951100 \
+		<"$LOG"
+
+	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-journal-clock"'
+	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":7,"blocked":1}'
+)
+
+ss_case_statistics_generation_sequence_scope() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	PERSISTENT="$TMP/statistics-state.tsv"
+	SEQUENCE="$TMP/statistics-sequence.tsv"
+	LEASES="$TMP/dhcp.leases"
+	ARP="$TMP/arp"
+	LOG="$TMP/dnsmasq.log"
+	: >"$LEASES"
+	printf '%s\n' 'IP address       HW type     Flags       HW address            Mask     Device' >"$ARP"
+	: >"$LOG"
+
+	# Sequence values cannot be compared across generations. A current tmpfs
+	# generation wins over an older flash generation even if the latter happened
+	# to reserve/consume a numerically much larger sequence.
+	cat >"$STATE" <<'STATE'
+meta	1787950800	1787950900	7	1	0	0	5	1787950900	1	0	0	0	0	generation-current	2	64
+bucket	1787950800	7	1
+STATE
+	cat >"$PERSISTENT" <<'STATE'
+meta	1787940000	1787958000	1	0	0	1787958000	5	1787958000	1	0	0	1787958000	1787954400	generation-old	4000	4096
+bucket	1787940000	1	0
+STATE
+	printf 'reserve\tgeneration-old\t4096\n' >"$SEQUENCE"
+
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v persistent_state_file="$PERSISTENT" \
+		-v sequence_file="$SEQUENCE" \
+		-v snapshot_seq_reservation_size=64 \
+		-v persistent_interval=3600 \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v lease_file="$LEASES" \
+		-v arp_file="$ARP" \
+		-v generation_seed='unused-generation-candidate' \
+		-v fixed_now=1787951000 \
+		<"$LOG"
+
+	ss_spec_assert_file_contains "$JSON" '"generation_id":"generation-current"'
+	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":7,"blocked":1}'
 )
 
 ss_case_statistics_ipv6_identity() (
@@ -829,4 +1050,95 @@ ss_case_statistics_modules() (
 	ss_spec_assert_file_contains "$STATSD" 'SS_STATSD_POLL_COMMAND'
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/Makefile" '$(INSTALL_BIN) ./files/usr/libexec/safeshield-stats-poll $(1)/usr/libexec/safeshield-stats-poll'
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/Makefile" '$(INSTALL_DATA) ./files/usr/lib/safeshield/statistics/*.awk $(1)/usr/lib/safeshield/statistics/'
+)
+
+ss_case_statistics_upload_projection() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	STATE="$TMP/state.tsv"
+	JSON="$TMP/statistics.json"
+	UPLOAD="$TMP/upload.json"
+	LEASES="$TMP/dhcp.leases"
+	INPUT="$TMP/source.tsv"
+	printf '%s\n' '1789000000 aa:bb:cc:dd:ee:ff 192.168.1.20 iphone *' >"$LEASES"
+
+	cat >"$INPUT" <<'DATA'
+snapshot	epoch-upload	udp+tcp	128	1	0	0	0	0
+client	192.168.1.20	0	0
+commit
+DATA
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v upload_json_file="$UPLOAD" \
+		-v upload_window_hours=2 \
+		-v generation_seed='generation-upload' \
+		-v lease_file="$LEASES" \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v fixed_now=1787950800 \
+		<"$INPUT"
+
+	cat >"$INPUT" <<'DATA'
+snapshot	epoch-upload	udp+tcp	128	1	0	0	5	1
+client	192.168.1.20	5	1
+commit
+DATA
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v upload_json_file="$UPLOAD" \
+		-v upload_window_hours=2 \
+		-v generation_seed='generation-upload' \
+		-v lease_file="$LEASES" \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v fixed_now=1787950860 \
+		<"$INPUT"
+
+	cat >"$INPUT" <<'DATA'
+snapshot	epoch-upload	udp+tcp	128	1	0	0	12	2
+client	192.168.1.20	12	2
+commit
+DATA
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v upload_json_file="$UPLOAD" \
+		-v upload_window_hours=2 \
+		-v generation_seed='generation-upload' \
+		-v lease_file="$LEASES" \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v fixed_now=1787954460 \
+		<"$INPUT"
+
+	cat >"$INPUT" <<'DATA'
+snapshot	epoch-upload	udp+tcp	128	1	0	0	20	3
+client	192.168.1.20	20	3
+commit
+DATA
+	ss_statistics_awk \
+		-v state_file="$STATE" \
+		-v json_file="$JSON" \
+		-v upload_json_file="$UPLOAD" \
+		-v upload_window_hours=2 \
+		-v generation_seed='generation-upload' \
+		-v lease_file="$LEASES" \
+		-v snapshot_interval=60 \
+		-v retention_hours=168 \
+		-v fixed_now=1787958060 \
+		<"$INPUT"
+
+	ss_spec_assert_file_contains "$JSON" '"schema":{"name":"safeshield.statistics","version":3}'
+	ss_spec_assert_file_contains "$JSON" '"totals":{"queries":20,"blocked":3}'
+	ss_spec_assert_file_contains "$UPLOAD" '"schema":{"name":"safeshield.statistics","version":3}'
+	ss_spec_assert_file_contains "$UPLOAD" '"generation_id":"generation-upload"'
+	ss_spec_assert_file_contains "$UPLOAD" '"totals":{"queries":15,"blocked":2}'
+	ss_spec_assert_file_contains "$UPLOAD" '"id":"aa:bb:cc:dd:ee:ff","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.20","hostname":"iphone","identified":true,"queries":15,"blocked":2'
+	ss_spec_assert_file_contains "$UPLOAD" '"bucket_start":1787954400,"queries":7,"blocked":1'
+	ss_spec_assert_file_contains "$UPLOAD" '"bucket_start":1787958000,"queries":8,"blocked":1'
+	! grep -F '"bucket_start":1787950800' "$UPLOAD" >/dev/null
+	ss_spec_assert_eq "$(sed -n 's/.*"snapshot_seq":\([0-9][0-9]*\).*/\1/p' "$UPLOAD")" "$(sed -n 's/.*"snapshot_seq":\([0-9][0-9]*\).*/\1/p' "$JSON")"
 )

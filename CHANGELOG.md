@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.21-r2] - 2026-09-12
+
+### Added
+
+- Upload SafeShield DNS statistics to the Hub `/api/v1/statistics` endpoint with the device-scoped bearer credential issued by `/api/v1/licenses/resolve`.
+- Add a separate statistics uploader process so Hub or WAN failures cannot block local DNS statistics collection.
+- Add generation-scoped statistics schema v3 `snapshot_seq` ordering with durable sequence-range reservation on persistence-enabled devices.
+- Add a compact two-hour upload projection for routine synchronization while retaining the full local 168-hour statistics dataset.
+
+### Changed
+
+- Upload statistics every five minutes, use a full retained snapshot at startup/recovery and approximately every six hours, and otherwise send only the recent two-hour window.
+- Cache Hub statistics upload credentials only in tmpfs and refresh them through license resolve after an HTTP 401 response.
+- Keep exact pending payloads across retry attempts so a lost HTTP acknowledgement can be safely resolved as a Hub `duplicate`.
+- Keep upload credentials and pending synchronization state in tmpfs so bearer tokens and retry payloads are never written to flash.
+
+### Fixed
+
+- Force a full reconciliation after upload failures so data outside the routine two-hour window is recovered after connectivity returns.
+- Reject a stale recent projection while the collector is atomically publishing a newer full snapshot, preventing a previous sequence from being promoted for upload.
+- Recover statistics ordering by `snapshot_seq` within the same generation, including across backward NTP corrections, journal replay, collector restarts, and persistent reboot recovery.
+
 ## [0.3.21-r1] - 2026-09-09
 
 - Bump version for release.

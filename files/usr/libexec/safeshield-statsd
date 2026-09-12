@@ -13,6 +13,9 @@ SS_STATSD_AWK_DIR="${SS_STATSD_AWK_DIR:-/usr/lib/safeshield/statistics}"
 SS_STATSD_POLL_COMMAND="${SS_STATSD_POLL_COMMAND:-/usr/libexec/safeshield-stats-poll}"
 SS_STATSD_PERSISTENT_STATE_FILE="${SS_STATSD_PERSISTENT_STATE_FILE:-/etc/safeshield/statistics-state.tsv}"
 SS_STATSD_PERSISTENT_JOURNAL_FILE="${SS_STATSD_PERSISTENT_JOURNAL_FILE:-/etc/safeshield/statistics-journal.tsv}"
+SS_STATSD_SEQUENCE_FILE="${SS_STATSD_SEQUENCE_FILE:-/etc/safeshield/statistics-sequence.tsv}"
+SS_STATSD_SEQUENCE_RESERVATION_SIZE="${SS_STATSD_SEQUENCE_RESERVATION_SIZE:-4096}"
+SS_STATSD_UPLOAD_WINDOW_HOURS="${SS_STATSD_UPLOAD_WINDOW_HOURS:-2}"
 SS_STATSD_PERSISTENT_INTERVAL_S="${SS_STATSD_PERSISTENT_INTERVAL_S:-3600}"
 SS_STATSD_PERSISTENT_COMPACT_INTERVAL_S="${SS_STATSD_PERSISTENT_COMPACT_INTERVAL_S:-604800}"
 
@@ -133,6 +136,7 @@ stats_run_collector() {
 	local lease_file="$3"
 	local persistent_state_file="$4"
 	local persistent_journal_file="$5"
+	local sequence_file="$6"
 	local generation_id ipv6_neigh_command='' force_rebaseline=0 rc=0
 
 	if [ -f "${SS_STATISTICS_REBASELINE_FILE}" ]; then
@@ -159,8 +163,12 @@ stats_run_collector() {
 	awk \
 		-v state_file="${SS_STATISTICS_STATE_FILE}" \
 		-v json_file="${SS_STATISTICS_JSON_FILE}" \
+		-v upload_json_file="${SS_STATISTICS_UPLOAD_JSON_FILE}" \
+		-v upload_window_hours="${SS_STATSD_UPLOAD_WINDOW_HOURS}" \
 		-v persistent_state_file="${persistent_state_file}" \
 		-v persistent_journal_file="${persistent_journal_file}" \
+		-v sequence_file="${sequence_file}" \
+		-v snapshot_seq_reservation_size="${SS_STATSD_SEQUENCE_RESERVATION_SIZE}" \
 		-v persistent_interval="${SS_STATSD_PERSISTENT_INTERVAL_S}" \
 		-v persistent_compact_interval="${SS_STATSD_PERSISTENT_COMPACT_INTERVAL_S}" \
 		-v snapshot_interval="${snapshot_interval}" \
@@ -197,7 +205,7 @@ stats_run_collector() {
 
 main() {
 	local snapshot_interval configured_snapshot_interval retention_hours lease_file configured_lease_file
-	local persistent_state_file persistent_journal_file persistence_mode rc=0
+	local persistent_state_file persistent_journal_file sequence_file persistence_mode rc=0
 
 	ss_load_config || return 1
 	[ "${ss_enabled}" = "1" ] || return 0
@@ -219,10 +227,12 @@ main() {
 
 	persistent_state_file="${SS_STATSD_PERSISTENT_STATE_FILE}"
 	persistent_journal_file="${SS_STATSD_PERSISTENT_JOURNAL_FILE}"
+	sequence_file="${SS_STATSD_SEQUENCE_FILE}"
 	persistence_mode='journal'
 	if ! ss_statistics_persistence_enabled; then
 		persistent_state_file=''
 		persistent_journal_file=''
+		sequence_file=''
 		persistence_mode='volatile'
 	fi
 
@@ -232,6 +242,9 @@ main() {
 	fi
 	if [ -n "$persistent_journal_file" ]; then
 		mkdir -p "${persistent_journal_file%/*}" || return 1
+	fi
+	if [ -n "$sequence_file" ]; then
+		mkdir -p "${sequence_file%/*}" || return 1
 	fi
 	stats_acquire_lock || return 0
 
@@ -256,7 +269,8 @@ main() {
 		"$retention_hours" \
 		"$lease_file" \
 		"$persistent_state_file" \
-		"$persistent_journal_file" || rc=$?
+		"$persistent_journal_file" \
+		"$sequence_file" || rc=$?
 	return "$rc"
 }
 

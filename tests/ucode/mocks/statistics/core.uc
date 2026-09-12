@@ -9,6 +9,7 @@ let config = {
 let data = {
     schema: { name: 'collector' },
     generation_id: 'generation-test',
+    snapshot_seq: '42',
     started_at: '100',
     updated_at: '200',
     totals: { queries: '120', blocked: '12' },
@@ -55,7 +56,7 @@ function to_int(v, def) {
 return {
     PKG_NAME: 'safeshield',
     STATISTICS_SCHEMA_NAME: 'safeshield.statistics',
-    STATISTICS_SCHEMA_VERSION: 2,
+    STATISTICS_SCHEMA_VERSION: 3,
     STATISTICS_FILE: '/tmp/statistics.json',
     data: data,
     reload_uci: function() { return true; },

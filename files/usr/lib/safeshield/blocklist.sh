@@ -263,20 +263,34 @@ ss_http_post_json() {
 	local url="$1"
 	local payload="$2"
 	local out="$3"
+	local authorization="${4:-}"
 	local data rc log_file
 
 	SS_HTTP_STATUS=''
 
 	if command_exists curl; then
-		SS_HTTP_STATUS="$(curl -sS \
-			--connect-timeout "$ss_download_timeout" \
-			--max-time "$ss_download_timeout" \
-			-H 'Content-Type: application/json' \
-			-H 'Accept: application/json' \
-			--data-binary "@${payload}" \
-			-o "$out" \
-			-w '%{http_code}' \
-			"$url")" || return $?
+		if [ -n "$authorization" ]; then
+			SS_HTTP_STATUS="$(curl -sS \
+				--connect-timeout "$ss_download_timeout" \
+				--max-time "$ss_download_timeout" \
+				-H 'Content-Type: application/json' \
+				-H 'Accept: application/json' \
+				-H "Authorization: ${authorization}" \
+				--data-binary "@${payload}" \
+				-o "$out" \
+				-w '%{http_code}' \
+				"$url")" || return $?
+		else
+			SS_HTTP_STATUS="$(curl -sS \
+				--connect-timeout "$ss_download_timeout" \
+				--max-time "$ss_download_timeout" \
+				-H 'Content-Type: application/json' \
+				-H 'Accept: application/json' \
+				--data-binary "@${payload}" \
+				-o "$out" \
+				-w '%{http_code}' \
+				"$url")" || return $?
+		fi
 
 		case "$SS_HTTP_STATUS" in
 			2[0-9][0-9])
@@ -293,17 +307,37 @@ ss_http_post_json() {
 	rm -f "$log_file"
 
 	if ss_uclient_supports '--post-file' && ss_uclient_supports '--header'; then
-		if uclient-fetch "$url" -O "$out" --timeout="${ss_download_timeout}" \
-			--header='Content-Type: application/json' \
-			--header='Accept: application/json' \
-			--post-file="$payload" 2>"$log_file"; then
-			rc=0
+		if [ -n "$authorization" ]; then
+			if uclient-fetch "$url" -O "$out" --timeout="${ss_download_timeout}" \
+				--header='Content-Type: application/json' \
+				--header='Accept: application/json' \
+				--header="Authorization: ${authorization}" \
+				--post-file="$payload" 2>"$log_file"; then
+				rc=0
+			else
+				rc=$?
+			fi
 		else
-			rc=$?
+			if uclient-fetch "$url" -O "$out" --timeout="${ss_download_timeout}" \
+				--header='Content-Type: application/json' \
+				--header='Accept: application/json' \
+				--post-file="$payload" 2>"$log_file"; then
+				rc=0
+			else
+				rc=$?
+			fi
 		fi
 		ss_http_finish_uclient_request "$log_file" "$rc"
 		return $?
 	fi
+
+	# Authenticated requests require explicit header support. Falling back to a
+	# headerless uclient request would leak a statistics payload without proving
+	# device identity and can only result in a 401 response.
+	[ -z "$authorization" ] || {
+		rm -f "$log_file"
+		return 1
+	}
 
 	if ss_uclient_supports '--post-file'; then
 		if uclient-fetch "$url" -O "$out" --timeout="${ss_download_timeout}" --post-file="$payload" 2>"$log_file"; then
@@ -528,6 +562,13 @@ ss_resolve_artifact() {
 	ss_resolved_license_plan="$(ss_json_get_file "$response" '@.license.plan')"
 	ss_resolved_license_status="$(ss_json_get_file "$response" '@.license.status')"
 	ss_resolved_device_profile="$(ss_json_get_file "$response" '@.device.profile')"
+
+	if command -v ss_statistics_store_upload_credentials >/dev/null 2>&1; then
+		if ! ss_statistics_store_upload_credentials "$response"; then
+			log_warn "Hub API response did not include usable statistics upload credentials"
+			ss_statistics_clear_upload_credentials
+		fi
+	fi
 
 	ss_resolve_artifact_sources "$response" || {
 		ss_status_set health_api_resolve "0"

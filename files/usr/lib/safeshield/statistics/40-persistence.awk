@@ -7,11 +7,12 @@ function save_state_file(path, now,    tmp, bucket, cutoff, key, composite, part
 	}
 
 	tmp = path ".tmp"
-	printf "meta\t%d\t%d\t%d\t%d\t%d\t%d\t4\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n", \
+	printf "meta\t%d\t%d\t%d\t%d\t%d\t%d\t5\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\n", \
 		started_at, updated_at, total_queries, total_blocked, devices_truncated, \
 		persistent_updated_at, session_started_at, persistence_healthy, \
 		persistent_error_count, persistent_last_error_at, persistent_compacted_at, \
-		last_journal_completed_bucket, normalize_state_field(generation_id) > tmp
+		last_journal_completed_bucket, normalize_state_field(generation_id), \
+		snapshot_seq, snapshot_seq_reserved_through > tmp
 	if (source_initialized || source_error_count > 0) {
 		printf "source\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", \
 			normalize_state_field(source_instance_id), \
@@ -60,6 +61,46 @@ function save_state_file(path, now,    tmp, bucket, cutoff, key, composite, part
 		system("rm -f " shell_quote(tmp))
 		return 0
 	}
+	return 1
+}
+
+function save_sequence_reservation(path, generation, reserved_through,    tmp) {
+	if (path == "" || generation == "" || reserved_through <= 0) {
+		return 0
+	}
+
+	tmp = path ".tmp"
+	printf "reserve\t%s\t%d\n", normalize_state_field(generation), reserved_through > tmp
+	close(tmp)
+	if (!replace_file(tmp, path)) {
+		system("rm -f " shell_quote(tmp))
+		return 0
+	}
+	return 1
+}
+
+function ensure_snapshot_sequence_reservation(now,    next_seq, reserved_through) {
+	next_seq = snapshot_seq + 1
+	if (sequence_file == "") {
+		snapshot_seq = next_seq
+		if (snapshot_seq > snapshot_seq_reserved_through) {
+			snapshot_seq_reserved_through = snapshot_seq
+		}
+		return 1
+	}
+
+	if (next_seq > snapshot_seq_reserved_through) {
+		reserved_through = next_seq + snapshot_seq_reservation_size - 1
+		if (!save_sequence_reservation(sequence_file, generation_id, reserved_through)) {
+			persistence_healthy = 0
+			persistent_error_count++
+			persistent_last_error_at = now
+			return 0
+		}
+		snapshot_seq_reserved_through = reserved_through
+	}
+
+	snapshot_seq = next_seq
 	return 1
 }
 
@@ -130,10 +171,11 @@ function write_journal_transaction(now, first_bucket, last_bucket, completed_thr
 
 	tmp = state_file ".journal.tmp"
 	txn_id = sprintf("%d-%d-%d", now, event_index, ++journal_txn_seq)
-	printf "begin\t%s\t2\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n", \
+	printf "begin\t%s\t3\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%d\n", \
 		txn_id, now, started_at, devices_truncated, session_started_at, \
 		completed_through, persistence_healthy, persistent_error_count, \
-		persistent_last_error_at, normalize_state_field(generation_id) > tmp
+		persistent_last_error_at, normalize_state_field(generation_id), \
+		snapshot_seq, snapshot_seq_reserved_through > tmp
 
 	for (key in journal_deleted_device) {
 		printf "delete_device\t%s\n", normalize_state_field(key) >> tmp

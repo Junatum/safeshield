@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=safeshield
 PKG_VERSION:=0.3.21
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=Beomjun Kang <kals323@gmail.com>
 PKG_LICENSE:=GPL-3.0-or-later
@@ -66,6 +66,7 @@ define Package/safeshield/install
 	$(INSTALL_BIN) ./files/usr/libexec/safeshield-refreshd $(1)/usr/libexec/safeshield-refreshd
 	$(INSTALL_BIN) ./files/usr/libexec/safeshield-statsd $(1)/usr/libexec/safeshield-statsd
 	$(INSTALL_BIN) ./files/usr/libexec/safeshield-stats-poll $(1)/usr/libexec/safeshield-stats-poll
+	$(INSTALL_BIN) ./files/usr/libexec/safeshield-statistics-uploader $(1)/usr/libexec/safeshield-statistics-uploader
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/safeshield $(1)/etc/config/safeshield
