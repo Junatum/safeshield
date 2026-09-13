@@ -4,14 +4,21 @@
 ![OpenWrt](https://img.shields.io/badge/OpenWrt-Compatible-blue)
 ![License](https://img.shields.io/github/license/Junatum/safeshield?label=License)
 
-A lightweight DNS-based ad blocker for OpenWrt, designed with a powerful, easy-to-use Web UI. Blocks ads and phishing sites, fully compatible with dnsmasq.
+SafeShield is a lightweight DNS protection engine for OpenWrt and the core network-protection component used by **SmartSafeHub**. It blocks advertising, tracking, and phishing domains at the router through dnsmasq, so connected devices can benefit without installing a separate client application.
+
+For most users, the recommended way to run SafeShield is through the **SmartSafeHub firmware and Web UI**. The standalone `luci-app-safeshield` package remains available for users who want a dedicated SafeShield-only LuCI interface, but current product UI development is focused on [`luci-app-smartsafehub`](https://github.com/Junatum/luci-app-smartsafehub).
+
+- SmartSafeHub: https://www.smartsafehub.com/
+- Firmware downloads: https://www.smartsafehub.com/firmware/
+- Installation guide: https://www.smartsafehub.com/docs/installation/
 
 ## Features
 
 - DNS-based blocking of ads, tracking, and phishing domains
 - Fully compatible with **dnsmasq**
 - Lightweight design suitable for **low-resource OpenWrt devices**
-- Easy management through the **LuCI Web UI**
+- Integrated management through the actively developed **SmartSafeHub Web UI**
+- Optional standalone management through `luci-app-safeshield`
 - Automatic blocklist download and refresh
 - Multiple Hub artifact sources with independent block/allow actions and checksum verification
 - Support for **custom allowlist and blocklist**
@@ -25,7 +32,10 @@ The badges below show the versions currently published to each repository channe
 | Package | Stable | Beta |
 | --- | --- | --- |
 | SafeShield | [![Stable SafeShield](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fstable%2Fversions.json&query=%24.packages%5B%22safeshield%22%5D&label=&color=brightgreen&cacheSeconds=300)](https://repo.smartsafehub.com/stable/versions.json) | [![Beta SafeShield](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fbeta%2Fversions.json&query=%24.packages%5B%22safeshield%22%5D&label=&color=orange&cacheSeconds=300)](https://repo.smartsafehub.com/beta/versions.json) |
-| LuCI SafeShield | [![Stable LuCI SafeShield](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fstable%2Fversions.json&query=%24.packages%5B%22luci-app-safeshield%22%5D&label=&color=brightgreen&cacheSeconds=300)](https://repo.smartsafehub.com/stable/versions.json) | [![Beta LuCI SafeShield](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fbeta%2Fversions.json&query=%24.packages%5B%22luci-app-safeshield%22%5D&label=&color=orange&cacheSeconds=300)](https://repo.smartsafehub.com/beta/versions.json) |
+| SmartSafeHub UI | [![Stable SmartSafeHub UI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fstable%2Fversions.json&query=%24.packages%5B%22luci-app-smartsafehub%22%5D&label=&color=brightgreen&cacheSeconds=300)](https://repo.smartsafehub.com/stable/versions.json) | [![Beta SmartSafeHub UI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fbeta%2Fversions.json&query=%24.packages%5B%22luci-app-smartsafehub%22%5D&label=&color=orange&cacheSeconds=300)](https://repo.smartsafehub.com/beta/versions.json) |
+| Standalone SafeShield UI | [![Stable LuCI SafeShield](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fstable%2Fversions.json&query=%24.packages%5B%22luci-app-safeshield%22%5D&label=&color=brightgreen&cacheSeconds=300)](https://repo.smartsafehub.com/stable/versions.json) | [![Beta LuCI SafeShield](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Frepo.smartsafehub.com%2Fbeta%2Fversions.json&query=%24.packages%5B%22luci-app-safeshield%22%5D&label=&color=orange&cacheSeconds=300)](https://repo.smartsafehub.com/beta/versions.json) |
+
+`luci-app-smartsafehub` is the primary user-facing UI and the focus of current product development. `luci-app-safeshield` is retained as an optional standalone SafeShield interface and is not the primary target for new product UI work.
 
 ## How it works
 
@@ -90,45 +100,79 @@ SafeShield requires the following environment:
 
 ## Installation
 
-SafeShield can be installed from the **SmartSafeHub OpenWrt package repository**.
+### Recommended: SmartSafeHub firmware
 
-Determine your device architecture:
+For supported hardware, the recommended installation path is a complete **SmartSafeHub OpenWrt firmware image**. This gives users the integrated SmartSafeHub Web UI together with SafeShield and the firmware-specific integration expected by the product.
 
-```sh
-opkg print-architecture
-```
+Download firmware without signing in:
 
-Add the repository:
+https://www.smartsafehub.com/firmware/
 
-```sh
-echo "src/gz smartsafehub https://repo.smartsafehub.com/stable/packages/<architecture>/smartsafehub" >> /etc/opkg/customfeeds.conf
-```
+The firmware page currently provides releases for supported devices including:
 
-Example (for `x86_64`):
+- **ipTIME AX3000SM**
+- **GL.iNet GL-MT300N-V2**
+- **Xiaomi Router AX3000T (International version)**
 
-```sh
-echo "src/gz smartsafehub https://repo.smartsafehub.com/stable/packages/x86_64/smartsafehub" >> /etc/opkg/customfeeds.conf
-```
+Choose the image type that matches the installation state:
 
-Update package lists:
+- **Factory** — for an initial installation from vendor firmware or a device-specific recovery flow.
+- **Sysupgrade** — for updating a router that already runs SmartSafeHub/OpenWrt.
 
-```sh
-opkg update
-```
+Always verify the exact hardware model and follow the device-specific installation guide before flashing. Installing an image for a different model can prevent the router from booting.
 
-Install SafeShield:
+See the installation guide for the current procedure:
 
-```sh
-opkg install safeshield
-```
+https://www.smartsafehub.com/docs/installation/
 
-Install the LuCI web interface (optional):
+### Advanced: install SafeShield packages on OpenWrt
+
+SafeShield is also published through the SmartSafeHub OpenWrt package repository for advanced users, development environments, and compatible custom OpenWrt installations. OpenWrt 25.12 uses the `apk` package manager.
+
+Add the SmartSafeHub signing key and Stable repository, replacing `<architecture>` with the target package architecture such as `aarch64_cortex-a53`, `mipsel_24kc`, or `x86_64`:
 
 ```sh
-opkg install luci-app-safeshield
+mkdir -p /etc/apk/keys /etc/apk/repositories.d
+
+uclient-fetch -O /etc/apk/keys/smartsafehub.pem \
+  https://repo.smartsafehub.com/stable/packages/<architecture>/smartsafehub/smartsafehub.pem
+
+printf '%s\n' \
+  'https://repo.smartsafehub.com/stable/packages/<architecture>/smartsafehub/packages.adb' \
+  > /etc/apk/repositories.d/smartsafehub.list
+
+apk update
 ```
 
-After installation, configure SafeShield via the LuCI interface under **LuCI → Services → SafeShield**.
+Install SafeShield with the primary SmartSafeHub UI:
+
+```sh
+apk add safeshield luci-app-smartsafehub
+```
+
+If you specifically want the older standalone SafeShield-only LuCI interface, it remains available as an optional package:
+
+```sh
+apk add luci-app-safeshield
+```
+
+The standalone UI is not the primary target for new product UI development. New dashboard, device-management, firmware-update, and broader SmartSafeHub features are developed in `luci-app-smartsafehub`.
+
+After installation, restart the relevant services if they are not already restarted by the package lifecycle:
+
+```sh
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
+/etc/init.d/safeshield restart
+```
+
+Verify SafeShield:
+
+```sh
+ubus call safeshield status
+/etc/init.d/safeshield status
+logread | grep -i safeshield
+```
 
 ## Build from source
 
@@ -152,12 +196,14 @@ Add SafeShield under the OpenWrt `package/` directory:
 git clone https://github.com/Junatum/safeshield package/safeshield
 ```
 
-If you also want to build the LuCI web interface, add
-`luci-app-safeshield` as well:
+If you also want the current SmartSafeHub product UI, add
+`luci-app-smartsafehub`:
 
 ```sh
-git clone https://github.com/Junatum/luci-app-safeshield package/luci-app-safeshield
+git clone https://github.com/Junatum/luci-app-smartsafehub package/luci-app-smartsafehub
 ```
+
+The standalone `luci-app-safeshield` repository is still available, but it is not the primary target for new UI development. Clone it only when you intentionally need the dedicated SafeShield-only interface.
 
 Select your target device:
 
@@ -178,7 +224,7 @@ Enable SafeShield as a module:
 ```sh
 cat >> .config <<'EOF'
 CONFIG_PACKAGE_safeshield=m
-CONFIG_PACKAGE_luci-app-safeshield=m
+CONFIG_PACKAGE_luci-app-smartsafehub=m
 EOF
 
 make defconfig
@@ -190,8 +236,8 @@ Build the packages:
 make package/safeshield/clean V=s
 make package/safeshield/compile V=s
 
-make package/luci-app-safeshield/clean V=s
-make package/luci-app-safeshield/compile V=s
+make package/luci-app-smartsafehub/clean V=s
+make package/luci-app-smartsafehub/compile V=s
 ```
 
 Find the generated packages:
@@ -199,7 +245,7 @@ Find the generated packages:
 ```sh
 find bin -type f \( \
   -name 'safeshield*.apk' \
-  -o -name 'luci-app-safeshield*.apk' \
+  -o -name 'luci-app-smartsafehub*.apk' \
 \) -print
 ```
 
@@ -230,17 +276,17 @@ cd openwrt-sdk-*
 ./scripts/feeds install -a
 
 git clone https://github.com/Junatum/safeshield package/safeshield
-git clone https://github.com/Junatum/luci-app-safeshield package/luci-app-safeshield
+git clone https://github.com/Junatum/luci-app-smartsafehub package/luci-app-smartsafehub
 
 cat >> .config <<'EOF'
 CONFIG_PACKAGE_safeshield=m
-CONFIG_PACKAGE_luci-app-safeshield=m
+CONFIG_PACKAGE_luci-app-smartsafehub=m
 EOF
 
 make defconfig
 
 make package/safeshield/compile V=s
-make package/luci-app-safeshield/compile V=s
+make package/luci-app-smartsafehub/compile V=s
 ```
 
 ### Install local build artifacts
@@ -249,10 +295,10 @@ For OpenWrt `apk` based builds, copy the generated artifacts to the
 device:
 
 ```sh
-find bin -type f \( -name 'safeshield-*.apk' -o -name 'luci-app-safeshield-*.apk' \) -print
+find bin -type f \( -name 'safeshield-*.apk' -o -name 'luci-app-smartsafehub-*.apk' \) -print
 
 scp path/to/safeshield-*.apk root@192.168.1.1:/tmp/
-scp path/to/luci-app-safeshield-*.apk root@192.168.1.1:/tmp/
+scp path/to/luci-app-smartsafehub-*.apk root@192.168.1.1:/tmp/
 ```
 
 Install them on the device:
@@ -261,7 +307,7 @@ Install them on the device:
 ssh root@192.168.1.1
 
 apk add --allow-untrusted /tmp/safeshield-*.apk
-apk add --allow-untrusted /tmp/luci-app-safeshield-*.apk
+apk add --allow-untrusted /tmp/luci-app-smartsafehub-*.apk
 
 /etc/init.d/rpcd restart
 /etc/init.d/uhttpd restart
@@ -482,9 +528,7 @@ dnsmasq blocked counter. If the extension is unavailable, SafeShield defensively
 uses standard `address=/domain/#` rules so DNS protection remains available
 without installing an unsupported directive. The statistics source also exposes
 dnsmasq's `instance_id`, `transport_scope`, client-table capacity,
-tracked-client count, `untracked_queries`, and `untracked_blocked`. The OpenWrt
-25.12 dnsmasq PoC currently reports `transport_scope=udp`; exact TCP accounting
-requires the corresponding dnsmasq parent-process accounting work.
+tracked-client count, `untracked_queries`, and `untracked_blocked`. The OpenWrt 25.12 dnsmasq integration reports `transport_scope=udp+tcp`, so both UDP and TCP DNS requests are included in the cumulative SafeShield counters.
 
 Update writable configuration values. `enabled` and `license_key` are
 intentionally excluded and have dedicated methods:
@@ -595,7 +639,11 @@ methods are declared as write access.
 
 ## Support
 
-If you encounter issues or have feature requests, please open an issue on GitHub:
+For product information, supported devices, installation guidance, and firmware downloads, visit:
+
+https://www.smartsafehub.com/
+
+For SafeShield source-code issues or feature requests, open an issue on GitHub:
 
 https://github.com/Junatum/safeshield/issues
 
