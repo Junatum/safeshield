@@ -15,6 +15,13 @@ Describe 'SafeShield blocklist behavior'
 		The error should equal ''
 	End
 
+	It 'retries artifact downloads and enforces size and checksum integrity'
+		When call ss_case_artifact_integrity
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
 	It 'stops retries when the Hub requires a SafeShield upgrade'
 		When call ss_case_upgrade_required
 		The status should be success

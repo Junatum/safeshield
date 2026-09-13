@@ -351,3 +351,95 @@ ss_case_upgrade_required() (
 	ss_spec_assert_file_contains "$TMP_DIR/status" 'health_artifact_download=0'
 	ss_spec_assert_not_exists "$TMP_DIR/sleep"
 )
+
+ss_case_artifact_integrity() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	SS_TMP_DIR="$TMP/runtime"
+	SS_RESOLVED_SOURCES="$SS_TMP_DIR/resolved-sources.tsv"
+	SS_ARTIFACT_CACHE_STATE="$SS_TMP_DIR/artifact-sources.state"
+	ss_download_retry=2
+	ss_download_timeout=10
+	ss_max_blocklist_file_size_kb=1024
+	mkdir -p "$SS_TMP_DIR"
+	STATUS="$TMP/status"
+	: >"$STATUS"
+	ss_should_stop() { return 1; }
+	ss_status_set() { printf 'set %s %s\n' "$1" "${2:-}" >>"$STATUS"; }
+	ss_status_add_error() { printf 'error %s\n' "$1" >>"$STATUS"; }
+	ss_status_add_warning() { printf 'warning %s\n' "$1" >>"$STATUS"; }
+	log_info() { :; }
+	log_error() { :; }
+	log_ok() { :; }
+	sleep() { :; }
+	command_exists() { command -v "$1" >/dev/null 2>&1; }
+	# shellcheck disable=SC1091
+	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/blocklist.sh"
+
+	printf '%s\n' 'ads.example' 'shared.example' >"$TMP/source0.txt"
+	printf '%s\n' 'shared.example' >"$TMP/source1.txt"
+	SOURCE0_SHA="$(sha256sum "$TMP/source0.txt" | awk '{print $1}')"
+	printf '0|block|source-0|https://example.invalid/source0|%s\n' "$SOURCE0_SHA" >"$SS_RESOLVED_SOURCES"
+	printf '%s\n' '1|allow|source-1|https://example.invalid/source1|' >>"$SS_RESOLVED_SOURCES"
+
+	GET_CALLS=0
+	ss_http_get_file() {
+		GET_CALLS=$((GET_CALLS + 1))
+		SS_HTTP_STATUS=''
+		case "$1" in
+			https://example.invalid/source0)
+				if [ "$GET_CALLS" -eq 1 ]; then
+					return 1
+				fi
+				cp "$TMP/source0.txt" "$2"
+				;;
+			https://example.invalid/source1)
+				cp "$TMP/source1.txt" "$2"
+				;;
+			*) return 1 ;;
+		esac
+	}
+	ss_download_api_artifacts
+	ss_spec_assert_eq "$GET_CALLS" '3'
+	ss_cached_api_sources_available
+	ss_spec_assert_file_line "$STATUS" 'set health_artifact_download 1'
+	ss_spec_assert_file_line "$STATUS" 'set health_artifact_sha256 '
+	ss_spec_assert_file_line "$STATUS" 'warning artifact_sha256_partial'
+	ss_spec_assert_eq "$(cat "$SS_TMP_DIR/api.0.block.txt")" 'ads.example
+shared.example'
+	ss_spec_assert_eq "$(cat "$SS_TMP_DIR/api.1.allow.txt")" 'shared.example'
+
+	: >"$STATUS"
+	printf '%s\n' '0|block|bad-sha|https://example.invalid/source0|0000000000000000000000000000000000000000000000000000000000000000' >"$SS_RESOLVED_SOURCES"
+	GET_CALLS=0
+	ss_http_get_file() {
+		GET_CALLS=$((GET_CALLS + 1))
+		SS_HTTP_STATUS=''
+		cp "$TMP/source0.txt" "$2"
+	}
+	! ss_download_api_artifacts
+	ss_spec_assert_file_line "$STATUS" 'set health_artifact_sha256 0'
+	ss_spec_assert_file_line "$STATUS" 'error artifact_sha256_mismatch'
+	ss_spec_assert_not_exists "$SS_ARTIFACT_CACHE_STATE"
+
+	: >"$STATUS"
+	command_exists() { return 1; }
+	! ss_verify_artifact_sha256 "$TMP/source0.txt" "$SOURCE0_SHA"
+	ss_spec_assert_file_line "$STATUS" 'set health_artifact_sha256 0'
+	ss_spec_assert_file_line "$STATUS" 'error sha256sum_not_found'
+	command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+	: >"$STATUS"
+	printf '%s\n' '0|block|too-large|https://example.invalid/source0|' >"$SS_RESOLVED_SOURCES"
+	ss_max_blocklist_file_size_kb=1
+	ss_http_get_file() {
+		SS_HTTP_STATUS=''
+		cp "$TMP/source0.txt" "$2"
+	}
+	du() { printf '2\t%s\n' "$2"; }
+	! ss_download_api_artifacts
+	ss_spec_assert_file_line "$STATUS" 'set health_artifact_download 0'
+	ss_spec_assert_file_line "$STATUS" 'error artifact_too_large'
+	ss_spec_assert_not_exists "$SS_ARTIFACT_CACHE_STATE"
+)

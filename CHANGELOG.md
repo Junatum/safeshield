@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.22-r3] - 2026-09-13
+
+### Added
+
+- Add end-to-end shell state-machine coverage for full SafeShield refresh success, rollback failures, lock contention, and HTTP 426 upgrade-required preservation of the active blocklist.
+- Add local-rule fast-apply coverage for cached-artifact fallback, duplicate fingerprints, lock timeout/termination, successful apply, and merge/restart/runtime/verification rollback paths.
+- Add init lifecycle coverage for disabled startup, statistics runtime wiring, dnsmasq directive migration failures, active-blocklist restart ownership, and enabled/disabled shutdown states.
+- Add artifact integrity coverage for retry recovery, partial checksum metadata, SHA-256 mismatch, missing `sha256sum`, and artifact size limits.
+- Add refreshd scheduler coverage for failed-attempt retry anchoring, future/invalid timestamps, manual-refresh rescheduling, WAN waits, recent-success boot skips, and disabled runtime behavior.
+- Add direct rpcd `runtime.uc` regression coverage and compile/behavior coverage for `status-store.uc`, including malformed state recovery and message mutations.
+
+### Fixed
+
+- Make refresh-lock regression coverage portable to macOS and other development hosts without a system `flock(1)` binary by using a test-only atomic lock shim while preserving the production `flock -n/-u` contract.
+- Make the new lifecycle and refreshd regression helpers ShellCheck-clean by exporting mocks consumed by dynamically sourced production functions and narrowly annotating scheduler calls loaded from the generated test harness.
+
 ## [0.3.22-r2] - 2026-09-13
 
 ### Added

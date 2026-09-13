@@ -8,6 +8,13 @@ Describe 'SafeShield runtime process behavior'
 		The error should equal ''
 	End
 
+	It 'schedules refreshes without retry storms and handles boot, WAN, and disabled states'
+		When call ss_case_refreshd_scheduler
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
 	It 'starts and stops the statistics collector cleanly'
 		When call ss_case_statistics_collector
 		The status should be success

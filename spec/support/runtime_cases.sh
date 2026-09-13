@@ -887,3 +887,158 @@ EOF_NO_HEADER
 	fi
 	[ ! -s "$UCLIENT_CALLS" ]
 )
+
+ss_case_refreshd_scheduler() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	REFRESHD="$SS_SPEC_ROOT/files/usr/libexec/safeshield-refreshd"
+	HARNESS="$TMP/refreshd-scheduler.sh"
+	awk '
+		/^ss_should_terminate=0$/ { capture=1 }
+		capture && /^trap "handle_term"/ { exit }
+		capture { print }
+	' "$REFRESHD" >"$HARNESS"
+	# shellcheck disable=SC1090
+	. "$HARNESS"
+
+	CALLS="$TMP/calls"
+	: >"$CALLS"
+	MOCK_LAST_SUCCESS=0
+	MOCK_LAST_ATTEMPT=0
+	NOW=1000
+	json() {
+		[ "${1:-}" = 'get' ] || return 1
+		case "${2:-}" in
+			last_success) printf '%s\n' "$MOCK_LAST_SUCCESS" ;;
+			last_attempt) printf '%s\n' "$MOCK_LAST_ATTEMPT" ;;
+			*) return 1 ;;
+		esac
+	}
+	is_valid_integer() { case "$1" in '' | *[!0-9]*) return 1 ;; *) return 0 ;; esac }
+	date() { [ "${1:-}" = '+%s' ] && printf '%s\n' "$NOW"; }
+	ss_status_set() { printf '%s=%s\n' "$1" "${2:-}" >>"$CALLS"; }
+	log_info() { :; }
+
+	MOCK_LAST_SUCCESS=900
+	MOCK_LAST_ATTEMPT=950
+	ss_spec_assert_eq "$(schedule_base_epoch 1000)" '950'
+	MOCK_LAST_ATTEMPT=1100
+	ss_spec_assert_eq "$(schedule_base_epoch 1000)" '900'
+	MOCK_LAST_SUCCESS='invalid'
+	MOCK_LAST_ATTEMPT='invalid'
+	ss_spec_assert_eq "$(schedule_base_epoch 1000)" '0'
+
+	MOCK_LAST_SUCCESS=950
+	NOW=1000
+	has_recent_success 100
+	MOCK_LAST_SUCCESS=900
+	! has_recent_success 100
+	MOCK_LAST_SUCCESS=1100
+	! has_recent_success 100
+
+	MOCK_LAST_SUCCESS=900
+	MOCK_LAST_ATTEMPT=0
+	NOW=950
+	SLEEPS="$TMP/sleeps"
+	: >"$SLEEPS"
+	SLEEP_CALL=0
+	sleep_seconds() {
+		SLEEP_CALL=$((SLEEP_CALL + 1))
+		printf '%s\n' "$1" >>"$SLEEPS"
+		if [ "$SLEEP_CALL" -eq 1 ]; then
+			MOCK_LAST_SUCCESS=970
+			NOW=1000
+			return 0
+		fi
+		return 1
+	}
+	: >"$CALLS"
+	# Defined by the dynamically sourced refreshd harness above.
+	# shellcheck disable=SC2218
+	! wait_until_refresh_due 100 900
+	ss_spec_assert_eq "$(cat "$SLEEPS")" '50
+70'
+	ss_spec_assert_file_line "$CALLS" 'next_refresh_at=1000'
+	ss_spec_assert_file_line "$CALLS" 'next_refresh_at=1070'
+
+	MOCK_LAST_SUCCESS=900
+	MOCK_LAST_ATTEMPT=0
+	NOW=1100
+	: >"$CALLS"
+	# Defined by the dynamically sourced refreshd harness above.
+	# shellcheck disable=SC2218
+	wait_until_refresh_due 100 900
+	ss_spec_assert_file_line "$CALLS" 'next_refresh_at=0'
+
+	REQUIRE_WAN=1
+	ss_config_get() {
+		case "$2" in
+			require_wan) printf '%s\n' "$REQUIRE_WAN" ;;
+			*) printf '%s\n' "${3:-}" ;;
+		esac
+	}
+	ubus() {
+		printf 'ubus %s\n' "$*" >>"$CALLS"
+		return 0
+	}
+	: >"$CALLS"
+	# Defined by the dynamically sourced refreshd harness above.
+	# shellcheck disable=SC2218
+	wait_for_wan_if_needed
+	ss_spec_assert_file_line "$CALLS" 'ubus -t 30 wait_for network.interface.wan'
+	REQUIRE_WAN=0
+	: >"$CALLS"
+	# Defined by the dynamically sourced refreshd harness above.
+	# shellcheck disable=SC2218
+	wait_for_wan_if_needed
+	[ ! -s "$CALLS" ]
+
+	refreshd_lock() { return 0; }
+	refreshd_unlock() { :; }
+	RUNNING_STATUS_FILE="$TMP/status.json"
+	printf '%s\n' '{}' >"$RUNNING_STATUS_FILE"
+	ss_status_reset() { printf '%s\n' status_reset >>"$CALLS"; }
+	ss_sync_blocklist_status() { printf '%s\n' sync_blocklist >>"$CALLS"; }
+	wait_for_wan_if_needed() { :; }
+	wait_until_refresh_due() { return 1; }
+	safeshield_force_download() { printf '%s\n' refresh >>"$CALLS"; }
+	ss_load_config() {
+		case "${MODE:-}" in
+			disabled) ss_enabled=0 ;;
+			*) ss_enabled=1 ;;
+		esac
+		return 0
+	}
+	ss_config_get() {
+		case "$2" in
+			refresh_interval_s) printf '%s\n' '100' ;;
+			boot_start_delay_s) printf '%s\n' '0' ;;
+			refresh_on_boot) printf '%s\n' '1' ;;
+			require_wan) printf '%s\n' '0' ;;
+			*) printf '%s\n' "${3:-}" ;;
+		esac
+	}
+	has_recent_success() { return 0; }
+	sleep_seconds() { return 0; }
+	MODE='boot-skip'
+	NOW=1000
+	: >"$CALLS"
+	main
+	ss_spec_assert_file_line "$CALLS" 'stage=boot_refresh_skipped'
+	ss_spec_assert_file_line "$CALLS" 'stage=scheduled_wait'
+	! grep -Fx 'refresh' "$CALLS" >/dev/null
+
+	MODE='disabled'
+	SLEEP_CALL=0
+	sleep_seconds() {
+		SLEEP_CALL=$((SLEEP_CALL + 1))
+		[ "$SLEEP_CALL" -eq 1 ]
+	}
+	: >"$CALLS"
+	main
+	ss_spec_assert_file_line "$CALLS" 'status=disabled'
+	ss_spec_assert_file_line "$CALLS" 'stage=disabled'
+	ss_spec_assert_file_line "$CALLS" 'next_refresh_at=0'
+	! grep -Fx 'refresh' "$CALLS" >/dev/null
+)

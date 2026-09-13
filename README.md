@@ -284,6 +284,7 @@ sh scripts/lint.sh
 ```
 
 The lint script runs `shfmt -d -ci`, ShellCheck, and `sh -n` against tracked shell files. Install `shfmt` and `shellcheck` on the development machine before running it.
+ShellSpec support helpers are linted by the same command; mocks consumed by dynamically sourced production functions are exported explicitly so the test harness remains ShellCheck-clean without changing runtime behavior.
 
 Run the regression suite separately when changing runtime, statistics, HTTP transport, or rpcd behavior:
 
@@ -291,7 +292,8 @@ Run the regression suite separately when changing runtime, statistics, HTTP tran
 REQUIRE_UCODE=1 shellspec
 ```
 
-The suite includes OpenWrt `uclient-fetch` authenticated POST handling, statistics uploader recovery/state transitions, artifact resolve identity payloads, and rpcd ucode validation/error paths.
+The suite includes full refresh/local-rule rollback state machines, refresh lock contention, init lifecycle transitions, artifact retry/size/SHA-256 integrity checks, refreshd scheduling, OpenWrt `uclient-fetch` authenticated POST handling, statistics uploader recovery/state transitions, artifact resolve identity payloads, and direct rpcd runtime/status-store validation paths.
+The refresh-lock regression uses a test-only portable lock shim, so the suite does not require a host `flock(1)` binary on macOS; production SafeShield continues to use OpenWrt's `flock`.
 
 To enable the repository pre-commit hook, install `pre-commit` and register the hook once:
 
