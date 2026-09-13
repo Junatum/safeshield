@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.22-r2] - 2026-09-13
+
+### Added
+
+- Add regression coverage for authenticated OpenWrt `uclient-fetch` statistics POSTs, HTTP status propagation, and the no-header safety guard.
+- Add statistics uploader state-machine coverage for corrupted pending metadata, stale/duplicate acknowledgements, periodic full reconciliation, and permanent HTTP 400 rejection.
+- Expand artifact resolve payload assertions to cover device identity/registration metadata and invalid memory fallback.
+- Expand rpcd ucode tests for statistics persistence/session metadata, config no-op behavior, dedicated options, runtime reconciliation failures, and oversized license keys.
+
 ## [0.3.22-r1] - 2026-09-13
 
 - Bump version for release.

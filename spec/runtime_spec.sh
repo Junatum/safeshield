@@ -36,6 +36,13 @@ Describe 'SafeShield runtime process behavior'
 		The error should equal ''
 	End
 
+	It 'uses authenticated uclient-fetch safely on OpenWrt'
+		When call ss_case_http_uclient_transport
+		The status should be success
+		The output should equal ''
+		The error should equal ''
+	End
+
 	It 'reconciles statistics runtime without disturbing refreshd'
 		When call ss_case_statistics_reconcile
 		The status should be success

@@ -285,6 +285,14 @@ sh scripts/lint.sh
 
 The lint script runs `shfmt -d -ci`, ShellCheck, and `sh -n` against tracked shell files. Install `shfmt` and `shellcheck` on the development machine before running it.
 
+Run the regression suite separately when changing runtime, statistics, HTTP transport, or rpcd behavior:
+
+```sh
+REQUIRE_UCODE=1 shellspec
+```
+
+The suite includes OpenWrt `uclient-fetch` authenticated POST handling, statistics uploader recovery/state transitions, artifact resolve identity payloads, and rpcd ucode validation/error paths.
+
 To enable the repository pre-commit hook, install `pre-commit` and register the hook once:
 
 ```sh

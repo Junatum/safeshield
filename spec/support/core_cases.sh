@@ -293,6 +293,22 @@ ss_case_resolve_payload() (
 	! grep -Eq '^  "safeshield_version"' "$payload"
 	ss_spec_assert_file_contains "$payload" '"license_key": "test-license"'
 	ss_spec_assert_file_contains "$payload" '"physical_fingerprint": "test-fingerprint"'
+	ss_spec_assert_file_contains "$payload" '"fingerprint_version": 1'
+	ss_spec_assert_file_contains "$payload" '"identity_provider": "factory_mac"'
+	ss_spec_assert_file_contains "$payload" '"identity_source": "test-source"'
+	ss_spec_assert_file_contains "$payload" '"identity_strength": "hardware_soft"'
+	ss_spec_assert_file_contains "$payload" '"identity_profile": "test-profile"'
+	ss_spec_assert_file_contains "$payload" '"installation_id": "test-installation"'
+	ss_spec_assert_file_contains "$payload" '"vendor": "TestVendor"'
+	ss_spec_assert_file_contains "$payload" '"model": "Test Router"'
+	ss_spec_assert_file_contains "$payload" '"arch": "test_arch"'
+	ss_spec_assert_file_contains "$payload" '"memory_mb": 128'
+
+	ss_detect_device_memory_mb() { printf '%s' 'invalid-memory'; }
+	invalid_memory_payload="$TMP_DIR/resolve-request-invalid-memory.json"
+	ss_write_resolve_payload "$invalid_memory_payload"
+	ss_spec_assert_file_contains "$invalid_memory_payload" '"memory_mb": 0'
+
 	SS_VERSION_FILE="$TMP_DIR/missing-version"
 	export SS_VERSION_FILE
 	fallback_payload="$TMP_DIR/resolve-request-fallback.json"

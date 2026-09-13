@@ -349,7 +349,7 @@ ss_http_post_json() {
 	local payload="$2"
 	local out="$3"
 	local authorization="${4:-}"
-	local call generation seq
+	local call generation seq response_status
 	call=0
 	[ -s "$HTTP_CALLS" ] && call="$(wc -l <"$HTTP_CALLS" | tr -d ' ')"
 	call=$((call + 1))
@@ -374,11 +374,20 @@ ss_http_post_json() {
 				return 1
 			fi
 			;;
+		bad-request)
+			SS_HTTP_STATUS='400'
+			return 1
+			;;
 	esac
 
 	generation="$(ss_json_get_file "$payload" '@.generation_id')"
 	seq="$(ss_json_get_file "$payload" '@.snapshot_seq')"
-	printf '{"status":"applied","generation_id":"%s","last_snapshot_seq":%s}\n' "$generation" "$seq" >"$out"
+	case "$MOCK_HTTP_MODE" in
+		stale) response_status='stale' ;;
+		duplicate) response_status='duplicate' ;;
+		*) response_status='applied' ;;
+	esac
+	printf '{"status":"%s","generation_id":"%s","last_snapshot_seq":%s}\n' "$response_status" "$generation" "$seq" >"$out"
 	SS_HTTP_STATUS='200'
 	return 0
 }
@@ -546,6 +555,75 @@ EOF_CORE
 	ss_spec_assert_eq "$(wc -l <"$REFRESH_CALLS" | tr -d ' ')" '1'
 	ss_spec_assert_eq "$(wc -l <"$HTTP_CALLS" | tr -d ' ')" '1'
 	ss_spec_assert_eq "$MOCK_UPLOAD_ENTITLEMENT" 'allowed'
+
+	# Corrupted pending metadata must never be uploaded. It is discarded so the
+	# next loop can rebuild a payload from an atomic collector snapshot.
+	printf '%s\n' '{"schema":{"name":"safeshield.statistics","version":3},"generation_id":"generation-upload","snapshot_seq":7}' >"$SS_STATISTICS_UPLOAD_PENDING_FILE"
+	printf '%s\n' 'invalid-mode\tgeneration-upload\t7' >"$SS_STATISTICS_UPLOAD_PENDING_META_FILE"
+	if upload_pending_load; then
+		return 1
+	fi
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" ]
+
+	# A stale ACK is successful transport-wise but forces the next upload to be a
+	# full reconciliation. A duplicate full ACK can then clear that requirement.
+	MOCK_UPLOAD_ENTITLEMENT='allowed'
+	MOCK_REFRESH_RESULT='allowed'
+	SS_STATISTICS_UPLOAD_TOKEN='token-current'
+	upload_state_generation='generation-upload'
+	upload_state_last_success_seq=6
+	upload_state_last_full_seq=6
+	upload_state_recent_successes=0
+	upload_state_needs_full=0
+	upload_state_save
+	write_payload "$SS_STATISTICS_JSON_FILE" 7
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 7
+	upload_pending_create
+	ss_spec_assert_file_contains "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$(printf 'recent\tgeneration-upload\t7')"
+	MOCK_HTTP_MODE='stale'
+	export MOCK_HTTP_MODE
+	upload_send_pending
+	upload_state_load
+	ss_spec_assert_eq "$upload_state_needs_full" '1'
+	ss_spec_assert_eq "$upload_state_last_success_seq" '7'
+
+	write_payload "$SS_STATISTICS_JSON_FILE" 8
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 8
+	upload_pending_create
+	ss_spec_assert_file_contains "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$(printf 'full\tgeneration-upload\t8')"
+	MOCK_HTTP_MODE='duplicate'
+	export MOCK_HTTP_MODE
+	upload_send_pending
+	upload_state_load
+	ss_spec_assert_eq "$upload_state_needs_full" '0'
+	ss_spec_assert_eq "$upload_state_last_full_seq" '8'
+
+	# The 12-hour cadence threshold selects a full snapshot even when no failure
+	# occurred, and a permanent 400 rejects/discards the payload while requiring
+	# a later full reconciliation.
+	upload_state_recent_successes="$SS_STATS_UPLOAD_FULL_EVERY"
+	upload_state_save
+	write_payload "$SS_STATISTICS_JSON_FILE" 9
+	write_payload "$SS_STATISTICS_UPLOAD_JSON_FILE" 9
+	upload_pending_create
+	ss_spec_assert_file_contains "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$(printf 'full\tgeneration-upload\t9')"
+	upload_pending_clear
+
+	upload_state_recent_successes=0
+	upload_state_needs_full=0
+	upload_state_last_success_seq=8
+	upload_state_save
+	upload_pending_create
+	ss_spec_assert_file_contains "$SS_STATISTICS_UPLOAD_PENDING_META_FILE" "$(printf 'recent\tgeneration-upload\t9')"
+	MOCK_HTTP_MODE='bad-request'
+	export MOCK_HTTP_MODE
+	BAD_REQUEST_RC=0
+	upload_send_pending || BAD_REQUEST_RC=$?
+	ss_spec_assert_eq "$BAD_REQUEST_RC" '2'
+	[ ! -e "$SS_STATISTICS_UPLOAD_PENDING_FILE" ]
+	upload_state_load
+	ss_spec_assert_eq "$upload_state_needs_full" '1'
 
 	# An unlicensed device is blocked locally without asking the Hub for a
 	# statistics credential. The long-lived uploader can remain idle so a later
@@ -719,4 +797,93 @@ EOF_CURL
 	ss_spec_assert_file_line "$CURL_ARGS" "@${PAYLOAD}"
 	ss_spec_assert_eq "$SS_HTTP_STATUS" '200'
 	[ -s "$OUTPUT" ]
+)
+
+ss_case_http_uclient_transport() (
+	set -eu
+	TMP="$(ss_spec_tmpdir)"
+	trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+	mkdir -p "$TMP/bin"
+	PAYLOAD="$TMP/payload.json"
+	OUTPUT="$TMP/response.json"
+	UCLIENT_ARGS="$TMP/uclient.args"
+	UCLIENT_CALLS="$TMP/uclient.calls"
+	printf '%s\n' '{"hello":"world"}' >"$PAYLOAD"
+	: >"$UCLIENT_ARGS"
+	: >"$UCLIENT_CALLS"
+
+	cat >"$TMP/bin/uclient-fetch" <<'EOF_UCLIENT'
+#!/bin/sh
+if [ "${1:-}" = '--help' ]; then
+	printf '%s\n' 'Usage: uclient-fetch [--post-file=FILE] [--header=HEADER]'
+	exit 0
+fi
+printf '%s\n' 'call' >>"$UCLIENT_CALLS"
+printf '%s\n' "$@" >>"$UCLIENT_ARGS"
+out=''
+prev=''
+for arg in "$@"; do
+	if [ "$prev" = '-O' ]; then
+		out="$arg"
+	fi
+	prev="$arg"
+done
+case "${UCLIENT_MODE:-success}" in
+	success)
+		[ -n "$out" ] && printf '%s\n' '{}' >"$out"
+		exit 0
+		;;
+	unauthorized)
+		printf '%s\n' 'HTTP error 401' >&2
+		exit 8
+		;;
+esac
+exit 1
+EOF_UCLIENT
+	chmod 755 "$TMP/bin/uclient-fetch"
+	export UCLIENT_ARGS UCLIENT_CALLS
+
+	ss_download_timeout=10
+	command_exists() {
+		[ "$1" = 'uclient-fetch' ]
+	}
+	# shellcheck disable=SC1091
+	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/blocklist.sh"
+
+	PATH="$TMP/bin:$PATH"
+	export PATH
+	UCLIENT_MODE='success'
+	export UCLIENT_MODE
+	ss_http_post_json 'https://www.smartsafehub.com/api/v1/statistics' "$PAYLOAD" "$OUTPUT" 'Bearer statistics-token'
+	ss_spec_assert_file_line "$UCLIENT_ARGS" '--header=Content-Type: application/json'
+	ss_spec_assert_file_line "$UCLIENT_ARGS" '--header=Accept: application/json'
+	ss_spec_assert_file_line "$UCLIENT_ARGS" '--header=Authorization: Bearer statistics-token'
+	ss_spec_assert_file_line "$UCLIENT_ARGS" "--post-file=$PAYLOAD"
+	ss_spec_assert_eq "$SS_HTTP_STATUS" ''
+	[ -s "$OUTPUT" ]
+
+	: >"$UCLIENT_ARGS"
+	UCLIENT_MODE='unauthorized'
+	export UCLIENT_MODE
+	if ss_http_post_json 'https://www.smartsafehub.com/api/v1/statistics' "$PAYLOAD" "$OUTPUT" 'Bearer statistics-token' 2>/dev/null; then
+		return 1
+	fi
+	ss_spec_assert_eq "$SS_HTTP_STATUS" '401'
+	[ ! -e "${OUTPUT}.uclient.txt" ]
+
+	cat >"$TMP/bin/uclient-fetch" <<'EOF_NO_HEADER'
+#!/bin/sh
+if [ "${1:-}" = '--help' ]; then
+	printf '%s\n' 'Usage: uclient-fetch [--post-file=FILE]'
+	exit 0
+fi
+printf '%s\n' 'network-call' >>"$UCLIENT_CALLS"
+exit 0
+EOF_NO_HEADER
+	chmod 755 "$TMP/bin/uclient-fetch"
+	: >"$UCLIENT_CALLS"
+	if ss_http_post_json 'https://www.smartsafehub.com/api/v1/statistics' "$PAYLOAD" "$OUTPUT" 'Bearer statistics-token'; then
+		return 1
+	fi
+	[ ! -s "$UCLIENT_CALLS" ]
 )

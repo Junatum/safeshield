@@ -9,7 +9,11 @@ assert(result.collector_running == true, 'statistics collector state is reported
 assert(result.snapshot_interval_s == 30 && result.effective_snapshot_interval_s == 30 && result.retention_hours == 24, 'statistics config values are normalized');
 assert(result.generation_id == 'generation-test', 'statistics generation is preserved');
 assert(result.snapshot_seq == 42, 'statistics snapshot sequence is preserved');
-assert(result.started_at == 100 && result.updated_at == 200, 'statistics timestamps are normalized');
+assert(result.started_at == 100 && result.session_started_at == 150 && result.updated_at == 200, 'statistics timestamps are normalized');
+assert(result.volatile == false && result.storage == 'tmpfs+flash' && result.persistent == true, 'statistics storage metadata is normalized');
+assert(result.persistence_enabled == true && result.persistence_healthy == true && result.persistence_mode == 'journal', 'statistics persistence state is normalized');
+assert(result.persistent_error_count == 2 && result.persistent_last_error_at == 190, 'statistics persistence errors are normalized');
+assert(result.persistent_updated_at == 195 && result.persistent_checkpoint_interval_s == 3600, 'statistics persistence checkpoint metadata is normalized');
 assert(result.totals.queries == 120 && result.totals.blocked == 12, 'statistics totals are normalized');
 assert(result.source.backend == 'dnsmasq_ubus' && result.source.available == true, 'statistics source backend is normalized');
 assert(result.source.instance_id == 'epoch-test' && result.source.transport_scope == 'udp', 'statistics source epoch and transport scope are preserved');
