@@ -32,22 +32,6 @@ ss_status_apply() {
 	return 0
 }
 
-is_enabled() {
-	uci_get "$1" 'config' 'enabled' '0'
-}
-
-is_active() {
-	local st
-
-	st="$(jsonfilter -i "${RUNNING_STATUS_FILE}" -e '@.data.status' 2>/dev/null)"
-
-	[ -n "$st" ] || return 1
-	[ "$st" = 'statusStopped' ] && return 1
-	[ "$st" = 'idle' ] && return 1
-
-	return 0
-}
-
 ss_now() {
 	date +%s
 }

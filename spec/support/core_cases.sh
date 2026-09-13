@@ -8,14 +8,6 @@ ss_case_utils() (
 	# shellcheck disable=SC1091
 	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/utils.sh"
 
-	str_contains 'alpha beta' 'beta'
-	! str_contains 'alpha beta' 'gamma'
-	str_contains_word 'alpha beta gamma' 'beta'
-	! str_contains_word 'alphabet beta' 'alpha'
-	ss_spec_assert_eq "$(str_first_word 'alpha beta')" 'alpha'
-	ss_spec_assert_eq "$(str_to_lower 'AbC123')" 'abc123'
-	ss_spec_assert_eq "$(str_to_upper 'AbC123')" 'ABC123'
-	ss_spec_assert_eq "$(str_replace 'alpha-beta-alpha' 'alpha' 'x')" 'x-beta-x'
 	command_exists sh
 	! command_exists safeshield-command-that-does-not-exist
 	ss_spec_assert_eq "$(ss_mask_secret '')" ''
@@ -26,8 +18,6 @@ ss_case_utils() (
 	for value in '' -1 1.5 12x; do
 		! is_valid_integer "$value"
 	done
-	is_greater 2.91 2.90
-	! is_greater 2.90 2.90
 	is_greater_equal 2.90 2.90
 	is_greater_equal 2.91 2.90
 	! is_greater_equal 2.79 2.80
@@ -394,15 +384,6 @@ ss_case_status_state() (
 	for key in license_plan artifact_tier artifact_source_count artifact_allow_source_count; do
 		grep -F "$(printf 'set\t%s\t' "$key")" "$CALLS" >/dev/null
 	done
-	JSONFILTER_STATUS='running'
-	jsonfilter() { [ -n "$JSONFILTER_STATUS" ] && printf '%s\n' "$JSONFILTER_STATUS"; }
-	is_active safeshield
-	JSONFILTER_STATUS='idle'
-	! is_active safeshield
-	JSONFILTER_STATUS='statusStopped'
-	! is_active safeshield
-	JSONFILTER_STATUS=''
-	! is_active safeshield
 	mkdir -p "$SS_DNSMASQ_DIR"
 	printf '%s\n' 'address=/ads.example/#' >"$TMP_DIR/new.blocklist"
 	ss_sync_path() { :; }

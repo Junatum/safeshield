@@ -157,23 +157,6 @@ ss_sync_detected_device_config() {
 	return 0
 }
 
-ss_detect_primary_mac() {
-	local iface mac
-
-	for iface in br-lan eth0 wan lan wlan0; do
-		mac="$(cat "/sys/class/net/${iface}/address" 2>/dev/null)"
-		case "$mac" in
-			'' | 00:00:00:00:00:00) ;;
-			*)
-				printf '%s' "$mac"
-				return 0
-				;;
-		esac
-	done
-
-	ip link 2>/dev/null | awk '/link\/ether/ { print $2; exit }'
-}
-
 ss_get_or_create_physical_fingerprint() {
 	local model="$1"
 	local arch="$2"

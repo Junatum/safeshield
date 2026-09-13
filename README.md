@@ -16,6 +16,7 @@ A lightweight DNS-based ad blocker for OpenWrt, designed with a powerful, easy-t
 - Multiple Hub artifact sources with independent block/allow actions and checksum verification
 - Support for **custom allowlist and blocklist**
 - Modular shell-based architecture for easy customization and maintenance
+- Lean runtime surface with regression coverage guarding retired/unused shell helpers from returning
 
 ## Package versions
 

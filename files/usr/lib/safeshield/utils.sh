@@ -4,40 +4,6 @@ readonly LOCK_FD=309
 readonly RUNNING_STATUS_LOCK="/var/lock/${PKG_NAME}.lock"
 readonly RUNNING_STATUS_FILE="/dev/shm/${PKG_NAME}.status.json"
 
-str_contains() {
-	case "$1" in
-		*"$2"*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
-str_contains_word() {
-	case " $1 " in
-		*" $2 "*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
-str_first_word() {
-	printf '%s\n' "${1%% *}"
-}
-
-str_to_lower() {
-	printf '%s' "$1" | tr 'A-Z' 'a-z'
-}
-
-str_to_upper() {
-	printf '%s' "$1" | tr 'a-z' 'A-Z'
-}
-
-str_replace() {
-	local src="$1"
-	local old="$2"
-	local new="$3"
-
-	printf '%s\n' "$src" | sed "s/${old}/${new}/g"
-}
-
 command_exists() {
 	command -v "$1" >/dev/null 2>&1
 }
@@ -64,12 +30,6 @@ is_valid_integer() {
 		'' | *[!0-9]*) return 1 ;;
 	esac
 	[ "$1" -ge 0 ] 2>/dev/null
-}
-
-is_greater() {
-	[ "$#" -eq 2 ] || return 2
-	[ "$1" != "$2" ] || return 1
-	[ "$(printf '%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
 }
 
 is_greater_equal() {

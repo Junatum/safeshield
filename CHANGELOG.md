@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.22-r4] - 2026-09-13
+
+### Changed
+
+- Remove legacy shell helpers that no production path calls, including generic string transforms, the old status active/enabled helpers, unused failure/debug log wrappers, manual dnsmasq kill/clear helpers, and the pre-identity duplicate primary-MAC detector.
+- Stop caching the unused shell-side `ss_debug` value while preserving the public UCI/rpcd `debug` option for compatibility.
+- Remove the unused `/lib/functions/network.sh` import from the init script; interface reload triggers continue to use the procd API supplied by `rc.common`.
+
+### Added
+
+- Add a dead-code regression contract that prevents retired helpers and the unused network-functions import from being reintroduced while asserting their active replacement paths remain present.
+
 ## [0.3.22-r3] - 2026-09-13
 
 ### Added

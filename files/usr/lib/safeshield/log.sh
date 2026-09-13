@@ -1,13 +1,7 @@
 # shellcheck shell=ash
 
-readonly _DOT_='.'
 readonly __DOT__='[.]'
-readonly _OK_='\033[0;32m\xe2\x9c\x93\033[0m'
 readonly __OK__='\033[0;32m[\xe2\x9c\x93]\033[0m'
-readonly _FAIL_='\033[0;31m\xe2\x9c\x97\033[0m'
-readonly __FAIL__='\033[0;31m[\xe2\x9c\x97]\033[0m'
-readonly _WARN_='\033[0;33m!\033[0m'
-readonly __WARN__='\033[0;33m[!]\033[0m'
 readonly _ERROR_='\033[0;31m[ERROR]\033[0m'
 readonly _WARNING_='\033[0;33m[WARN]\033[0m'
 
@@ -66,12 +60,4 @@ log_warn() {
 
 log_error() {
 	log_line 1 "${_ERROR_} $*\n"
-}
-
-log_fail() {
-	log_line 1 "${__FAIL__} $*\n"
-}
-
-log_debug() {
-	log_line 4 "${_DOT_} $*\n"
 }

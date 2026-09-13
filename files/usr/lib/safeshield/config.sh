@@ -23,7 +23,6 @@ ss_dnsmasq_sanity_check="1"
 ss_statistics_enabled="1"
 ss_statistics_snapshot_interval_s="60"
 ss_statistics_retention_hours="168"
-ss_debug="0"
 
 ss_valid_line_count="0"
 
@@ -124,7 +123,6 @@ ss_load_config() {
 	ss_statistics_enabled="$(ss_config_get config statistics_enabled 1)"
 	ss_statistics_snapshot_interval_s="$(ss_config_get config statistics_snapshot_interval_s 60)"
 	ss_statistics_retention_hours="$(ss_config_get config statistics_retention_hours 168)"
-	ss_debug="$(ss_config_get config debug 0)"
 
 	ss_validate_config
 }

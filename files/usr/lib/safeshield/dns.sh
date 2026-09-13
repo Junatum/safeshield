@@ -88,10 +88,6 @@ ss_clean_tmp() {
 		2>/dev/null
 }
 
-ss_clear_active_blocklist() {
-	rm -f "${SS_BLOCKLIST_FILE}"
-}
-
 ss_check_dnsmasq_confdir() {
 	local confdir
 
@@ -130,14 +126,6 @@ check_dns_runtime() {
 
 	rm -f "${SS_RUNTIME_OUT}"
 	return 1
-}
-
-dnsmasq_kill() {
-	log_info "Stopping dnsmasq"
-
-	killall -q dnsmasq >/dev/null 2>&1 || true
-	sleep 1
-	killall -q -KILL dnsmasq >/dev/null 2>&1 || true
 }
 
 dnsmasq_restart() {
