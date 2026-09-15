@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.23-r1] - 2026-09-15
+
+- Bump version for release.
+
 ## [0.3.22-r4] - 2026-09-13
 
 ### Changed
