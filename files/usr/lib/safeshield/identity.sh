@@ -15,6 +15,9 @@ SS_INSTALLATION_ID=""
 SS_INSTALLATION_SECRET=""
 SS_IDENTITY_CREATED_AT=""
 SS_IDENTITY_UPDATED_AT=""
+SS_DEVICE_CODE=""
+SS_DEVICE_CODE_SOURCE="unknown"
+SS_SMARTSAFEHUB_FIRMWARE_JSON="${SS_SMARTSAFEHUB_FIRMWARE_JSON:-/usr/share/smartsafehub/firmware.json}"
 
 ss_identity_log_warn() {
 	if command -v log_warn >/dev/null 2>&1; then
@@ -110,6 +113,66 @@ ss_identity_board_name() {
 	[ -n "$value" ] || value="$(ubus call system board 2>/dev/null | jsonfilter -e '@.board_name' 2>/dev/null | head -n 1 || true)"
 	[ -n "$value" ] || value="unknown"
 	printf '%s' "$value"
+}
+
+ss_identity_valid_device_code() {
+	printf '%s' "$1" | grep -Eq '^[a-z0-9][a-z0-9._-]{0,63}$'
+}
+
+ss_identity_device_code_from_firmware() {
+	local firmware_json="${SS_SMARTSAFEHUB_FIRMWARE_JSON:-/usr/share/smartsafehub/firmware.json}"
+	local device_code=""
+
+	[ -r "$firmware_json" ] || return 1
+	ss_identity_command_exists jsonfilter || return 1
+
+	device_code="$(jsonfilter -i "$firmware_json" -e '@.device_code' 2>/dev/null | head -n 1 | tr -d '\r\n' || true)"
+	ss_identity_valid_device_code "$device_code" || return 1
+
+	printf '%s' "$device_code"
+}
+
+ss_identity_device_code_from_board() {
+	local board="$1"
+
+	case "$board" in
+		iptime,ax3000sm)
+			printf '%s' 'iptime-ax3000sm'
+			;;
+		glinet,gl-mt300n-v2 | gl.inet,gl-mt300n-v2)
+			printf '%s' 'gl-mt300n-v2'
+			;;
+		xiaomi,mi-router-ax3000t | xiaomi,mi-router-ax3000t-ubootmod)
+			printf '%s' 'xiaomi-ax3000t'
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+ss_identity_refresh_device_code() {
+	local device_code=""
+	local board=""
+
+	device_code="$(ss_identity_device_code_from_firmware 2>/dev/null || true)"
+	if [ -n "$device_code" ]; then
+		SS_DEVICE_CODE="$device_code"
+		SS_DEVICE_CODE_SOURCE="smartsafehub_firmware"
+		return 0
+	fi
+
+	board="$(ss_identity_board_name)"
+	device_code="$(ss_identity_device_code_from_board "$board" 2>/dev/null || true)"
+	if [ -n "$device_code" ]; then
+		SS_DEVICE_CODE="$device_code"
+		SS_DEVICE_CODE_SOURCE="board"
+		return 0
+	fi
+
+	SS_DEVICE_CODE=""
+	SS_DEVICE_CODE_SOURCE="unknown"
+	return 0
 }
 
 ss_identity_profile_code() {
@@ -398,6 +461,8 @@ set safeshield.identity.identity_provider='${SS_IDENTITY_PROVIDER}'
 set safeshield.identity.identity_source='${SS_IDENTITY_SOURCE}'
 set safeshield.identity.identity_strength='${SS_IDENTITY_STRENGTH}'
 set safeshield.identity.identity_profile='${SS_IDENTITY_PROFILE}'
+set safeshield.identity.device_code='${SS_DEVICE_CODE}'
+set safeshield.identity.device_code_source='${SS_DEVICE_CODE_SOURCE}'
 set safeshield.identity.installation_id='${SS_INSTALLATION_ID}'
 set safeshield.identity.created_at='${SS_IDENTITY_CREATED_AT}'
 set safeshield.identity.updated_at='${SS_IDENTITY_UPDATED_AT}'
@@ -414,6 +479,8 @@ ss_identity_status_set() {
 	ss_status_set identity_source "$SS_IDENTITY_SOURCE"
 	ss_status_set identity_strength "$SS_IDENTITY_STRENGTH"
 	ss_status_set identity_profile "$SS_IDENTITY_PROFILE"
+	ss_status_set device_code "$SS_DEVICE_CODE"
+	ss_status_set device_code_source "$SS_DEVICE_CODE_SOURCE"
 	ss_status_set installation_id "$SS_INSTALLATION_ID"
 }
 
@@ -443,6 +510,7 @@ ss_identity_create() {
 		ss_identity_log_warn "No stable hardware identity source found; using installation-random physical_fingerprint"
 	fi
 
+	ss_identity_refresh_device_code
 	ss_identity_write_env || return 1
 	ss_identity_sync_uci || true
 	ss_identity_status_set || true
@@ -454,6 +522,7 @@ ss_identity_ensure() {
 	local arch="${2:-}"
 
 	if ss_identity_load; then
+		ss_identity_refresh_device_code
 		ss_identity_sync_uci || true
 		ss_identity_status_set || true
 		return 0

@@ -21,6 +21,8 @@ let identity = {
     identity_source: 'eth0',
     identity_strength: 'strong',
     identity_profile: 'test-profile',
+    device_code: 'xiaomi-ax3000t',
+    device_code_source: 'smartsafehub_firmware',
     installation_id: 'install-id'
 };
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.23-r2] - 2026-09-19
+
+### Added
+
+- Send canonical `device.device_code` and `device.device_code_source` metadata with Hub resolve requests and expose the same identity through `safeshield.status`.
+- Prefer `/usr/share/smartsafehub/firmware.json` as the authoritative device-code source for SmartSafeHub firmware, with exact board-name mappings for supported standalone SafeShield installations.
+- Add regression coverage for firmware-provided device codes, board fallback, unknown devices, resolve payload metadata, and rpcd status exposure.
+
+### Changed
+
+- Keep unsupported or unrecognized hardware explicit by sending an empty `device_code` with source `unknown` instead of inferring a supported product from architecture, memory, or fuzzy model matching.
+
 ## [0.3.23-r1] - 2026-09-15
 
 - Bump version for release.

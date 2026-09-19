@@ -206,6 +206,34 @@ ss_case_identity() (
 	ss_spec_assert_eq "$(ss_identity_profile_code 'glinet,gl-mt300n-v2')" 'gl_mt300n_v2'
 	ss_spec_assert_eq "$(ss_identity_profile_code 'xiaomi,mi-router-ax3000t')" 'xiaomi_mi_router_ax3000t'
 	ss_spec_assert_eq "$(ss_identity_profile_code 'smartsafehub,router')" 'smartsafehub'
+	ss_spec_assert_eq "$(ss_identity_device_code_from_board 'iptime,ax3000sm')" 'iptime-ax3000sm'
+	ss_spec_assert_eq "$(ss_identity_device_code_from_board 'glinet,gl-mt300n-v2')" 'gl-mt300n-v2'
+	ss_spec_assert_eq "$(ss_identity_device_code_from_board 'xiaomi,mi-router-ax3000t')" 'xiaomi-ax3000t'
+	ss_spec_assert_eq "$(ss_identity_device_code_from_board 'xiaomi,mi-router-ax3000t-ubootmod')" 'xiaomi-ax3000t'
+	! ss_identity_device_code_from_board 'vendor,unsupported-router'
+	ss_identity_valid_device_code 'xiaomi-ax3000t'
+	! ss_identity_valid_device_code 'Xiaomi AX3000T'
+
+	SS_SMARTSAFEHUB_FIRMWARE_JSON="$TMP_DIR/firmware.json"
+	export SS_SMARTSAFEHUB_FIRMWARE_JSON
+	printf '%s\n' '{"device_code":"xiaomi-ax3000t"}' >"$SS_SMARTSAFEHUB_FIRMWARE_JSON"
+	MOCK_DEVICE_CODE='xiaomi-ax3000t'
+	jsonfilter() { printf '%s\n' "$MOCK_DEVICE_CODE"; }
+	ss_identity_board_name() { printf '%s' 'iptime,ax3000sm'; }
+	ss_identity_refresh_device_code
+	ss_spec_assert_eq "$SS_DEVICE_CODE" 'xiaomi-ax3000t'
+	ss_spec_assert_eq "$SS_DEVICE_CODE_SOURCE" 'smartsafehub_firmware'
+
+	MOCK_DEVICE_CODE='invalid device code'
+	ss_identity_refresh_device_code
+	ss_spec_assert_eq "$SS_DEVICE_CODE" 'iptime-ax3000sm'
+	ss_spec_assert_eq "$SS_DEVICE_CODE_SOURCE" 'board'
+
+	rm -f "$SS_SMARTSAFEHUB_FIRMWARE_JSON"
+	ss_identity_board_name() { printf '%s' 'vendor,unsupported-router'; }
+	ss_identity_refresh_device_code
+	ss_spec_assert_eq "$SS_DEVICE_CODE" ''
+	ss_spec_assert_eq "$SS_DEVICE_CODE_SOURCE" 'unknown'
 
 	ss_identity_board_name() { printf '%s' 'iptime,ax3000sm'; }
 	ss_identity_try_mtd_factory_mac() { printf '%s' 'aa:bb:cc:dd:ee:ff|mtd:Factory:0x4:mac'; }
@@ -264,6 +292,8 @@ ss_case_resolve_payload() (
 	SS_IDENTITY_SOURCE='test-source'
 	SS_IDENTITY_STRENGTH='hardware_soft'
 	SS_IDENTITY_PROFILE='test-profile'
+	SS_DEVICE_CODE='test-router'
+	SS_DEVICE_CODE_SOURCE='board'
 	SS_INSTALLATION_ID='test-installation'
 	ss_identity_ensure() { return 0; }
 	is_valid_integer() {
@@ -288,6 +318,8 @@ ss_case_resolve_payload() (
 	ss_spec_assert_file_contains "$payload" '"identity_source": "test-source"'
 	ss_spec_assert_file_contains "$payload" '"identity_strength": "hardware_soft"'
 	ss_spec_assert_file_contains "$payload" '"identity_profile": "test-profile"'
+	ss_spec_assert_file_contains "$payload" '"device_code": "test-router"'
+	ss_spec_assert_file_contains "$payload" '"device_code_source": "board"'
 	ss_spec_assert_file_contains "$payload" '"installation_id": "test-installation"'
 	ss_spec_assert_file_contains "$payload" '"vendor": "TestVendor"'
 	ss_spec_assert_file_contains "$payload" '"model": "Test Router"'

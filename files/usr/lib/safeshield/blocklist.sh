@@ -196,6 +196,8 @@ ss_write_resolve_payload() {
 	ss_status_set identity_source "$SS_IDENTITY_SOURCE"
 	ss_status_set identity_strength "$SS_IDENTITY_STRENGTH"
 	ss_status_set identity_profile "$SS_IDENTITY_PROFILE"
+	ss_status_set device_code "$SS_DEVICE_CODE"
+	ss_status_set device_code_source "$SS_DEVICE_CODE_SOURCE"
 	ss_status_set installation_id "$SS_INSTALLATION_ID"
 
 	cat >"$out" <<__SAFESHIELD_JSON__
@@ -208,6 +210,8 @@ ss_write_resolve_payload() {
     "identity_source": $(ss_json_value "$SS_IDENTITY_SOURCE"),
     "identity_strength": $(ss_json_value "$SS_IDENTITY_STRENGTH"),
     "identity_profile": $(ss_json_value "$SS_IDENTITY_PROFILE"),
+    "device_code": $(ss_json_value "$SS_DEVICE_CODE"),
+    "device_code_source": $(ss_json_value "$SS_DEVICE_CODE_SOURCE"),
     "installation_id": $(ss_json_value "$SS_INSTALLATION_ID"),
     "vendor": $(ss_json_value "$vendor"),
     "model": $(ss_json_value "$model"),

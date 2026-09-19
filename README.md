@@ -89,6 +89,15 @@ only on the router when generating the active dnsmasq configuration. This keeps
 the Hub artifacts separate while preserving override precedence as `local allow`
 > `local block` > `Hub allow` > `Hub block`.
 
+SafeShield also sends a canonical `device.device_code` with Hub resolve requests.
+SmartSafeHub firmware is authoritative when `/usr/share/smartsafehub/firmware.json`
+contains a valid `device_code`. Standalone SafeShield installations fall back only
+to exact OpenWrt board-name mappings for officially recognized hardware; unknown
+hardware sends an empty `device_code` instead of guessing from vendor, model,
+architecture, or memory. `device.device_code_source` reports
+`smartsafehub_firmware`, `board`, or `unknown` for diagnostics. The same values
+are exposed through `ubus call safeshield status`.
+
 ## System Requirements
 
 SafeShield requires the following environment:

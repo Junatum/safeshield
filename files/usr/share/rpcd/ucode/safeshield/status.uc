@@ -144,6 +144,8 @@ function build_status() {
     let cfg_identity_source = identity_cfg('identity_source', '');
     let cfg_identity_strength = identity_cfg('identity_strength', '');
     let cfg_identity_profile = identity_cfg('identity_profile', '');
+    let cfg_device_code = identity_cfg('device_code', '');
+    let cfg_device_code_source = identity_cfg('device_code_source', 'unknown');
     let cfg_installation_id = identity_cfg('installation_id', '');
     let cfg_device_vendor = cfg('device_vendor', '');
     let cfg_device_model = cfg('device_model', '');
@@ -192,6 +194,8 @@ function build_status() {
     let identity_source = data.identity_source || cfg_identity_source || '';
     let identity_strength = data.identity_strength || cfg_identity_strength || '';
     let identity_profile = data.identity_profile || cfg_identity_profile || '';
+    let device_code = data.device_code || cfg_device_code || '';
+    let device_code_source = data.device_code_source || cfg_device_code_source || 'unknown';
     let installation_id = data.installation_id || cfg_installation_id || '';
     let device_profile = data.device_profile || '';
     let dnsmasq_version = data.dnsmasq_version || '';
@@ -265,6 +269,8 @@ function build_status() {
             identity_source: identity_source,
             identity_strength: identity_strength,
             identity_profile: identity_profile,
+            device_code: device_code,
+            device_code_source: device_code_source,
             installation_id: installation_id,
             profile: device_profile,
             configured: {

@@ -78,6 +78,8 @@ ss_status_reset_artifact_fields() {
 	ss_status_set identity_source ""
 	ss_status_set identity_strength ""
 	ss_status_set identity_profile ""
+	ss_status_set device_code ""
+	ss_status_set device_code_source ""
 	ss_status_set installation_id ""
 	ss_status_set device_profile ""
 	ss_status_set artifact_tier ""
