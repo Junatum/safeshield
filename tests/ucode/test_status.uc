@@ -11,7 +11,8 @@ assert(ready.artifact.source_count == 2, 'status reports artifact source count')
 assert(ready.artifact.block_source_count == 1 && ready.artifact.allow_source_count == 1, 'status reports artifact action counts');
 assert(ready.sources.items[0].last_result == 'ok', 'healthy API source is reported ok');
 assert(ready.blocklist.installed == true && ready.blocklist.file_size_kb == 2048, 'blocklist state is normalized');
-assert(ready.license.configured == true && ready.license.key_masked == 'abcd...wxyz', 'license state is masked');
+assert(ready.license.plan == 'pro' && ready.license.status == 'active', 'Hub entitlement is exposed without a local license key');
+assert(ready.license.configured == null && ready.license.key_masked == null, 'status does not expose retired license-key metadata');
 assert(ready.device.device_code == 'xiaomi-ax3000t', 'status exposes the canonical device code');
 assert(ready.device.device_code_source == 'smartsafehub_firmware', 'status exposes the device code source');
 assert(ready.health.overall == 'ok', 'healthy ready state reports overall ok');

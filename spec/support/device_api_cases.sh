@@ -13,6 +13,9 @@ ss_case_device_api_contract() (
 	ss_spec_assert_file_contains "$BLOCKLIST" 'Device ${device_credential}'
 	ss_spec_assert_file_not_contains "$BLOCKLIST" "url='https://www.smartsafehub.com/api/v1/licenses/resolve'"
 	ss_spec_assert_file_not_contains "$STATISTICS" "resolve_url='https://www.smartsafehub.com/api/v1/licenses/resolve'"
+	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/config.sh" 'ss_license_key'
+	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/libexec/safeshield-statistics-uploader" 'ss_license_key'
+	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield.uc" 'license_update'
 )
 
 ss_case_device_registration_pending() (

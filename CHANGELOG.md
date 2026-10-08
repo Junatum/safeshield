@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.24-r3] - 2026-10-08
+
+### Removed
+
+- Remove the legacy SafeShield license-key RPC, UCI runtime handling, and masked/raw key exposure. Device/account authentication is owned by SmartSafeHub.
+- Remove the retired `license.uc` rpcd module and its host-side ucode tests.
+
+### Changed
+
+- Drive Cloud statistics eligibility exclusively from authenticated `/api/v1/devices/sync` responses instead of the presence of a local license key.
+- Recheck a denied statistics entitlement on the normal 12-hour cadence so account or subscription changes can recover without a legacy key transition.
+- Remove preserved legacy `safeshield.config.license_key` values during package upgrade or first boot.
+
+### Fixed
+
+- Keep the init-script runtime version synchronized with package version `0.3.24-r3`.
+
+### Tests
+
+- Add regression contracts that reject legacy license-key RPC/config paths and verify statistics entitlement recovery without `ss_license_key`.
+
 ## [0.3.24-r2] - 2026-10-03
 
 ### Added

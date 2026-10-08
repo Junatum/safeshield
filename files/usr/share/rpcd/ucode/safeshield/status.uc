@@ -20,7 +20,6 @@ let file_size_kb = core.file_size_kb;
 let to_bool = core.to_bool;
 let to_optional_bool = core.to_optional_bool;
 let to_int = core.to_int;
-let mask_secret = core.mask_secret;
 let service_running = runtime.service_running;
 let dnsmasq_running = runtime.dnsmasq_running;
 
@@ -134,8 +133,6 @@ function build_status() {
     let refresh_interval_s = to_int(cfg('refresh_interval_s', '28800'), 28800);
     let boot_start_delay_s = to_int(cfg('boot_start_delay_s', '30'), 30);
 
-    let license_key = cfg('license_key', '');
-    let license_configured = !!license_key;
     let apply_local_overrides = to_bool(cfg('apply_local_overrides', '1'), true);
 
     let cfg_physical_fingerprint = identity_cfg('physical_fingerprint', '');
@@ -256,8 +253,6 @@ function build_status() {
             last_error_code: last_error_code
         },
         license: {
-            configured: license_configured,
-            key_masked: mask_secret(license_key),
             plan: license_plan,
             status: license_status
         },
