@@ -303,7 +303,6 @@ ss_case_resolve_payload() (
 		esac
 	}
 	ss_status_set() { :; }
-	ss_license_key='test-license'
 	SS_VERSION_FILE="$TMP_DIR/version"
 	export SS_VERSION_FILE
 	printf '%s\n' '0.3.18-r1' >"$SS_VERSION_FILE"
@@ -311,7 +310,8 @@ ss_case_resolve_payload() (
 	ss_write_resolve_payload "$payload"
 	ss_spec_assert_file_contains "$payload" '    "safeshield_version": "0.3.18-r1"'
 	! grep -Eq '^  "safeshield_version"' "$payload"
-	ss_spec_assert_file_contains "$payload" '"license_key": "test-license"'
+	! grep -Fq '"credential"' "$payload"
+	! grep -Fq '"license_key"' "$payload"
 	ss_spec_assert_file_contains "$payload" '"physical_fingerprint": "test-fingerprint"'
 	ss_spec_assert_file_contains "$payload" '"fingerprint_version": 1'
 	ss_spec_assert_file_contains "$payload" '"identity_provider": "factory_mac"'

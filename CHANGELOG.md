@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.24-r2] - 2026-10-03
+
+### Added
+
+- Support authenticated Hub requests with the SmartSafeHub device credential managed by the device component.
+
+### Changed
+
+- Resolve protection data through `/api/v1/devices/sync` instead of the license-specific resolve endpoint.
+- Stop sending a license key when resolving protection data; account ownership and subscription entitlement are resolved by the Hub.
+- Wait for the SmartSafeHub device credential when device registration is still pending; keep the router, DNS service, and any previously applied protection data available while retrying later.
+- Refresh statistics upload credentials through `/api/v1/devices/sync` instead of the legacy license resolve API.
+
+### Tests
+
+- Added contract coverage for device-credential authentication, generic device sync, and removal of direct legacy license resolve calls from SafeShield.
+
 ## [0.3.24-r1] - 2026-09-19
 
 - Bump version for release.
