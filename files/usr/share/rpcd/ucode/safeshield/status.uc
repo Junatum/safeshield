@@ -183,8 +183,8 @@ function build_status() {
     let artifact_block_source_count = to_int(data.artifact_block_source_count || (artifact_download_url_present ? 1 : 0), 0);
     let artifact_allow_source_count = to_int(data.artifact_allow_source_count || 0, 0);
 
-    let license_plan = data.license_plan || '';
-    let license_status = data.license_status || '';
+    let entitlement_plan = data.entitlement_plan || '';
+    let entitlement_status = data.entitlement_status || '';
     let physical_fingerprint = data.physical_fingerprint || cfg_physical_fingerprint || '';
     let fingerprint_version = to_int(data.fingerprint_version || cfg_fingerprint_version || 1, 1);
     let identity_provider = data.identity_provider || cfg_identity_provider || '';
@@ -252,9 +252,9 @@ function build_status() {
             last_result: last_result,
             last_error_code: last_error_code
         },
-        license: {
-            plan: license_plan,
-            status: license_status
+        entitlement: {
+            plan: entitlement_plan,
+            status: entitlement_status
         },
 
         device: {

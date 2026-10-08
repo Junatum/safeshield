@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.24-r4] - 2026-10-08
+
+### Changed
+
+- Rename the active Hub plan/status runtime fields from `license_*` to `entitlement_*` and expose them through `safeshield.status.entitlement`.
+- Keep subscription entitlement separate from the retired local SafeShield license-key concept so downstream consumers no longer need license-shaped status fields.
+
+### Tests
+
+- Update ucode and ShellSpec contracts for the `entitlement` status schema and prevent the retired `license` status object from returning.
+
 ## [0.3.24-r3] - 2026-10-08
 
 ### Removed

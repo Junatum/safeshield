@@ -559,8 +559,8 @@ ss_resolve_artifact() {
 	ss_resolved_artifact_version="$(ss_json_get_file "$response" '@.artifact.version')"
 	ss_resolved_artifact_unique_domains="$(ss_json_get_file "$response" '@.artifact.unique_domains')"
 	ss_resolved_artifact_rules="$(ss_json_get_file "$response" '@.artifact.rules')"
-	ss_resolved_license_plan="$(ss_json_get_file "$response" '@.entitlement.plan')"
-	ss_resolved_license_status="$(ss_json_get_file "$response" '@.entitlement.status')"
+	ss_resolved_entitlement_plan="$(ss_json_get_file "$response" '@.entitlement.plan')"
+	ss_resolved_entitlement_status="$(ss_json_get_file "$response" '@.entitlement.status')"
 	ss_resolved_device_profile="$(ss_json_get_file "$response" '@.device.profile')"
 
 	if command -v ss_statistics_sync_upload_entitlement >/dev/null 2>&1; then
@@ -585,12 +585,12 @@ ss_resolve_artifact() {
 	ss_status_set artifact_version "$ss_resolved_artifact_version"
 	ss_status_set artifact_unique_domains "${ss_resolved_artifact_unique_domains:-0}"
 	ss_status_set artifact_rules "${ss_resolved_artifact_rules:-0}"
-	ss_status_set license_plan "${ss_resolved_license_plan:-free}"
-	ss_status_set license_status "${ss_resolved_license_status:-unlicensed}"
+	ss_status_set entitlement_plan "${ss_resolved_entitlement_plan:-free}"
+	ss_status_set entitlement_status "${ss_resolved_entitlement_status:-unlicensed}"
 	ss_status_set device_profile "$ss_resolved_device_profile"
 	SS_RESOLVE_ERROR_CODE=''
 
-	log_ok "Resolved ${ss_resolved_artifact_tier:-unknown}/${ss_resolved_artifact_version:-unknown} artifact sources for plan ${ss_resolved_license_plan:-free}"
+	log_ok "Resolved ${ss_resolved_artifact_tier:-unknown}/${ss_resolved_artifact_version:-unknown} artifact sources for plan ${ss_resolved_entitlement_plan:-free}"
 }
 
 ss_verify_artifact_sha256() {

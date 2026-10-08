@@ -415,7 +415,7 @@ ss_case_status_state() (
 	done
 	: >"$CALLS"
 	ss_status_reset_artifact_fields
-	for key in license_plan artifact_tier artifact_source_count artifact_allow_source_count; do
+	for key in entitlement_plan artifact_tier artifact_source_count artifact_allow_source_count; do
 		grep -F "$(printf 'set\t%s\t' "$key")" "$CALLS" >/dev/null
 	done
 	mkdir -p "$SS_DNSMASQ_DIR"

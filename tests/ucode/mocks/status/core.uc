@@ -40,8 +40,8 @@ let state = {
         health_dns_runtime: '1',
         blocklist_installed: '1',
         blocklist_file_size_kb: '2048',
-        license_plan: 'pro',
-        license_status: 'active'
+        entitlement_plan: 'pro',
+        entitlement_status: 'active'
     },
     warnings: [],
     errors: []

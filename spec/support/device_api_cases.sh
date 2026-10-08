@@ -16,6 +16,10 @@ ss_case_device_api_contract() (
 	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/config.sh" 'ss_license_key'
 	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/libexec/safeshield-statistics-uploader" 'ss_license_key'
 	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield.uc" 'license_update'
+	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield/status.uc" 'entitlement: {'
+	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield/status.uc" 'license: {'
+	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/status.sh" 'license_plan'
+	ss_spec_assert_file_not_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/status.sh" 'license_status'
 )
 
 ss_case_device_registration_pending() (
