@@ -2,6 +2,7 @@
 
 let core = require('core');
 let ubus = require('ubus');
+let fs = require('fs');
 let runtime = require('runtime');
 
 ubus.state.services.safeshield = {
@@ -20,6 +21,13 @@ ubus.state.services.dnsmasq = { instances: { main: { running: true } } };
 assert(runtime.dnsmasq_running() == true, 'dnsmasq_running accepts a running dnsmasq instance');
 ubus.state.services.dnsmasq.instances.main.running = false;
 assert(runtime.dnsmasq_running() == false, 'dnsmasq_running rejects stopped dnsmasq instances');
+assert(length(fs.state.calls) >= 7, 'status checks use a separate bounded ubus client');
+for (let call in fs.state.calls) {
+    assert(index(call, 'timeout 2 ubus call service list') >= 0, 'service lookup always has a timeout');
+}
+fs.state.timeout = true;
+assert(runtime.service_running('safeshield') == false, 'failed or timed out service lookup fails closed');
+fs.state.timeout = false;
 
 let action = runtime.run_service_action('status', 1000);
 assert(action.ok == true && action.rc == 0, 'run_service_action reports successful service commands');

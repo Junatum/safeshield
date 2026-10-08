@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.24-r5] - 2026-10-08
+
+### Fixed
+
+- Prevent SafeShield status and statistics RPC requests from blocking rpcd on nested service lookups.
+- Limit service status checks to two seconds and return a safe stopped state when procd cannot respond.
+
+### Tests
+
+- Cover isolated, time-bounded service lookups and timeout fallback behavior.
+
 ## [0.3.24-r4] - 2026-10-08
 
 ### Changed

@@ -2,7 +2,6 @@
 
 let core = require('core');
 let fs = require('fs');
-let ubus = require('ubus').connect();
 
 let PKG_NAME = core.PKG_NAME;
 let STATUS_FILE = core.STATUS_FILE;
@@ -12,43 +11,52 @@ let to_bool = core.to_bool;
 let reload_uci = core.reload_uci;
 let cfg = core.cfg;
 
+// Do not call ubus synchronously from an rpcd handler.  In particular,
+// service.list may require the same event loop currently serving the caller.
+// Use an independent ubus client with an upper time bound instead.
+function service_instances(name) {
+    // These are the only procd services queried by this module. Keeping the
+    // argument allowlisted also prevents shell command injection.
+    if (name != PKG_NAME && name != 'dnsmasq') {
+        return null;
+    }
+
+    let pipe = fs.popen(sprintf("timeout 2 ubus call service list '{\"name\":\"%s\"}' 2>/dev/null", name), 'r');
+    if (!pipe) {
+        return null;
+    }
+
+    let output = pipe.read('all');
+    pipe.close();
+    if (!output) {
+        return null;
+    }
+
+    let result = json(output);
+    return result && result[name] && result[name].instances || null;
+}
+
 function service_running(name) {
-    let r = ubus.call('service', 'list', { name: name });
-    if (!r || !r[name] || !r[name].instances) {
+    let instances = service_instances(name);
+    if (!instances) {
         return false;
     }
 
-    for (let inst_name, inst in r[name].instances) {
+    for (let inst_name, inst in instances) {
         if (inst.running) {
             return true;
         }
     }
-
     return false;
 }
 
 function service_instance_running(name, instance_name) {
-    let r = ubus.call('service', 'list', { name: name });
-    if (!r || !r[name] || !r[name].instances || !r[name].instances[instance_name]) {
-        return false;
-    }
-
-    return !!r[name].instances[instance_name].running;
+    let instances = service_instances(name);
+    return !!(instances && instances[instance_name] && instances[instance_name].running);
 }
 
 function dnsmasq_running() {
-    let r = ubus.call('service', 'list', { name: 'dnsmasq' });
-    if (!r || !r.dnsmasq || !r.dnsmasq.instances) {
-        return false;
-    }
-
-    for (let inst_name, inst in r.dnsmasq.instances) {
-        if (inst.running) {
-            return true;
-        }
-    }
-
-    return false;
+    return service_running('dnsmasq');
 }
 
 function run_service_action(action, timeout_ms) {
