@@ -23,7 +23,7 @@ ubus.state.services.dnsmasq.instances.main.running = false;
 assert(runtime.dnsmasq_running() == false, 'dnsmasq_running rejects stopped dnsmasq instances');
 assert(length(fs.state.calls) >= 7, 'status checks use a separate bounded ubus client');
 for (let call in fs.state.calls) {
-    assert(index(call, 'timeout 2 ubus call service list') >= 0, 'service lookup always has a timeout');
+    assert(index(call, 'ubus -t 2 call service list') >= 0, 'service lookup uses ubus built-in timeout without an external timeout binary');
 }
 fs.state.timeout = true;
 assert(runtime.service_running('safeshield') == false, 'failed or timed out service lookup fails closed');

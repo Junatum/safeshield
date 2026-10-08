@@ -13,7 +13,8 @@ let cfg = core.cfg;
 
 // Do not call ubus synchronously from an rpcd handler.  In particular,
 // service.list may require the same event loop currently serving the caller.
-// Use an independent ubus client with an upper time bound instead.
+// Use an independent ubus client with its built-in -t timeout (seconds).
+// BusyBox/OpenWrt installations do not necessarily provide coreutils timeout.
 function service_instances(name) {
     // These are the only procd services queried by this module. Keeping the
     // argument allowlisted also prevents shell command injection.
@@ -21,7 +22,7 @@ function service_instances(name) {
         return null;
     }
 
-    let pipe = fs.popen(sprintf("timeout 2 ubus call service list '{\"name\":\"%s\"}' 2>/dev/null", name), 'r');
+    let pipe = fs.popen(sprintf("ubus -t 2 call service list '{\"name\":\"%s\"}' 2>/dev/null", name), 'r');
     if (!pipe) {
         return null;
     }
