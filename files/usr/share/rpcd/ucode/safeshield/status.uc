@@ -214,8 +214,10 @@ function build_status() {
 
     let hub_source = build_api_source(data, enabled);
     let installed = blocklist_installed || file_exists(BLOCKLIST_FILE);
-    let refreshd_running = service_running(PKG_NAME);
-    let dns_running = dnsmasq_running();
+    let refresh_service = runtime.service_status(PKG_NAME, true);
+    let dns_service = runtime.service_status('dnsmasq', true);
+    let refreshd_running = refresh_service.running;
+    let dns_running = dns_service.running;
 
     let generated_at = time();
     let next_refresh_in_s = 0;
@@ -242,7 +244,11 @@ function build_status() {
 
         runtime: {
             refreshd_running: refreshd_running,
+            refreshd_state: refresh_service.state,
+            refreshd_lookup_ok: refresh_service.lookup_ok,
             dnsmasq_running: dns_running,
+            dnsmasq_state: dns_service.state,
+            dnsmasq_lookup_ok: dns_service.lookup_ok,
             dnsmasq_version: dnsmasq_version,
             dnsmasq_min_version: dnsmasq_min_version,
             dns_runtime_ok: health_dns_runtime || dns_running,

@@ -15,45 +15,64 @@ let cfg = core.cfg;
 // service.list may require the same event loop currently serving the caller.
 // Use an independent ubus client with its built-in -t timeout (seconds).
 // BusyBox/OpenWrt installations do not necessarily provide coreutils timeout.
-function service_instances(name) {
-    // These are the only procd services queried by this module. Keeping the
-    // argument allowlisted also prevents shell command injection.
+// Only successful procd lookups are briefly reused. A failed lookup must not
+// poison subsequent requests or be mistaken for a stopped service.
+let service_cache = {};
+
+function service_status(name, use_cache) {
     if (name != PKG_NAME && name != 'dnsmasq') {
-        return null;
+        return { state: 'unknown', running: false, lookup_ok: false };
+    }
+
+    let now = time();
+    let cached = service_cache[name];
+    if (use_cache && cached && cached.at == now) {
+        return cached.value;
     }
 
     let pipe = fs.popen(sprintf("ubus -t 2 call service list '{\"name\":\"%s\"}' 2>/dev/null", name), 'r');
     if (!pipe) {
-        return null;
+        return { state: 'unknown', running: false, lookup_ok: false };
     }
 
     let output = pipe.read('all');
     pipe.close();
     if (!output) {
-        return null;
+        return { state: 'unknown', running: false, lookup_ok: false };
     }
 
     let result = json(output);
-    return result && result[name] && result[name].instances || null;
+    // procd returns an empty object when the named service is absent.
+    // That is a valid stopped response, not a transport failure.
+    if (type(result) != 'object') {
+        return { state: 'unknown', running: false, lookup_ok: false };
+    }
+
+    let instances = result[name] && result[name].instances;
+    let running = false;
+    if (type(instances) == 'object') {
+        for (let instance_name, instance in instances) {
+            if (instance && instance.running) {
+                running = true;
+                break;
+            }
+        }
+    }
+
+    let value = { state: running ? 'running' : 'stopped', running: running, lookup_ok: true, instances: instances || {} };
+    if (use_cache) {
+        service_cache[name] = { at: now, value: value };
+    }
+    return value;
 }
 
 function service_running(name) {
-    let instances = service_instances(name);
-    if (!instances) {
-        return false;
-    }
-
-    for (let inst_name, inst in instances) {
-        if (inst.running) {
-            return true;
-        }
-    }
-    return false;
+    return service_status(name, false).running;
 }
 
 function service_instance_running(name, instance_name) {
-    let instances = service_instances(name);
-    return !!(instances && instances[instance_name] && instances[instance_name].running);
+    let state = service_status(name, false);
+    return !!(state.instances && state.instances[instance_name] && state.instances[instance_name].running);
 }
 
 function dnsmasq_running() {
@@ -94,10 +113,11 @@ function start_refresh_async() {
         };
     }
 
-    if (!service_running(PKG_NAME)) {
+    let service = service_status(PKG_NAME, false);
+    if (!service.running) {
         return {
             accepted: false,
-            reason: 'service_stopped'
+            reason: service.lookup_ok ? 'service_stopped' : 'service_unavailable'
         };
     }
 
@@ -138,10 +158,11 @@ function start_local_apply_async() {
         };
     }
 
-    if (!service_running(PKG_NAME)) {
+    let service = service_status(PKG_NAME, false);
+    if (!service.running) {
         return {
             accepted: false,
-            reason: 'service_stopped'
+            reason: service.lookup_ok ? 'service_stopped' : 'service_unavailable'
         };
     }
 
@@ -164,6 +185,7 @@ function start_local_apply_async() {
 
 return {
     service_running: service_running,
+    service_status: service_status,
     service_instance_running: service_instance_running,
     dnsmasq_running: dnsmasq_running,
     run_service_action: run_service_action,

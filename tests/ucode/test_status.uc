@@ -1,9 +1,15 @@
 'use strict';
 
 let core = require('core');
+let runtime = require('runtime');
 let status = require('status');
 
 let ready = status.build();
+assert(ready.runtime.refreshd_state == 'running' && ready.runtime.dnsmasq_state == 'running' && ready.runtime.refreshd_lookup_ok == true, 'healthy status includes successful procd lookup details');
+runtime.state.lookup_ok = false;
+let unknown = status.build();
+assert(unknown.runtime.refreshd_state == 'unknown' && unknown.runtime.refreshd_lookup_ok == false && unknown.active == false, 'unknown service lookups do not claim running');
+runtime.state.lookup_ok = true;
 assert(ready.status == 'ready', 'status preserves ready state');
 assert(ready.summary.label == 'Ready' && ready.summary.severity == 'info', 'ready summary is generated');
 assert(index(ready.summary.message, '42000 rules active') >= 0, 'ready summary includes active rule count');

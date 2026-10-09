@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.24-r6] - 2026-10-09
+
+### Fixed
+
+- Distinguish a stopped DNS protection service from a temporarily unavailable status check without changing existing running flags.
+
+### Improved
+
+- Reuse successful procd service lookup results for up to one second to reduce repeated RPC work; retry failed lookups on the next request.
+
+### Tests
+
+- Cover unknown service states, retry after lookup failure, and short-lived lookup reuse.
+
 ## [0.3.24-r5] - 2026-10-08
 
 ### Fixed

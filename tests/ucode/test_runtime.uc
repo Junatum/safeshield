@@ -11,6 +11,7 @@ ubus.state.services.safeshield = {
         stopped: { running: false }
     }
 };
+assert(runtime.service_status('safeshield', false).state == 'running', 'runtime distinguishes running services');
 assert(runtime.service_running('safeshield') == true, 'service_running accepts any running instance');
 assert(runtime.service_instance_running('safeshield', 'refreshd') == true, 'service_instance_running finds a running instance');
 assert(runtime.service_instance_running('safeshield', 'stopped') == false, 'service_instance_running preserves stopped state');
@@ -27,7 +28,12 @@ for (let call in fs.state.calls) {
 }
 fs.state.timeout = true;
 assert(runtime.service_running('safeshield') == false, 'failed or timed out service lookup fails closed');
+assert(runtime.service_status('safeshield', true).state == 'unknown', 'lookup failure is exposed as unknown');
 fs.state.timeout = false;
+let calls_before = length(fs.state.calls);
+assert(runtime.service_status('safeshield', true).lookup_ok == true, 'failed lookups are not cached');
+assert(runtime.service_status('safeshield', true).lookup_ok == true, 'successful lookup can be reused briefly');
+assert(length(fs.state.calls) == calls_before + 1, 'repeated successful lookups share the cached result');
 
 let action = runtime.run_service_action('status', 1000);
 assert(action.ok == true && action.rc == 0, 'run_service_action reports successful service commands');
