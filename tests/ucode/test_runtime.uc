@@ -22,7 +22,7 @@ ubus.state.services.dnsmasq = { instances: { main: { running: true } } };
 assert(runtime.dnsmasq_running() == true, 'dnsmasq_running accepts a running dnsmasq instance');
 ubus.state.services.dnsmasq.instances.main.running = false;
 assert(runtime.dnsmasq_running() == false, 'dnsmasq_running rejects stopped dnsmasq instances');
-assert(length(fs.state.calls) >= 7, 'status checks use a separate bounded ubus client');
+assert(length(fs.state.calls) == 6, 'supported service checks use a separate bounded ubus client while unsupported names are rejected locally');
 for (let call in fs.state.calls) {
     assert(index(call, 'ubus -t 2 call service list') >= 0, 'service lookup uses ubus built-in timeout without an external timeout binary');
 }
