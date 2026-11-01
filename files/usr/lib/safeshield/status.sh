@@ -10,26 +10,19 @@ ss_status_exec() {
 }
 
 ss_status_apply() {
-	local tmp="${RUNNING_STATUS_FILE}.tmp"
+	local tmp="${RUNNING_STATUS_FILE}.tmp.$$" rc=0
 
 	mkdir -p "${RUNNING_STATUS_FILE%/*}" || return 1
+	json_lock_open || return 1
 
-	ss_status_exec "$@" >"${tmp}" || {
-		rm -f "${tmp}"
-		return 1
-	}
-
-	[ -s "${tmp}" ] || {
-		rm -f "${tmp}"
-		return 1
-	}
-
-	mv -f "${tmp}" "${RUNNING_STATUS_FILE}" || {
-		rm -f "${tmp}"
-		return 1
-	}
-
-	return 0
+	ss_status_exec "$@" >"$tmp" || rc=1
+	[ "$rc" -eq 0 ] && [ -s "$tmp" ] || rc=1
+	if [ "$rc" -eq 0 ]; then
+		mv -f "$tmp" "$RUNNING_STATUS_FILE" || rc=1
+	fi
+	[ "$rc" -eq 0 ] || rm -f "$tmp"
+	json_lock_close
+	return "$rc"
 }
 
 ss_now() {
@@ -159,8 +152,6 @@ ss_status_add_warning() {
 }
 
 ss_status_reset() {
-	rm -f "${RUNNING_STATUS_FILE}" "${RUNNING_STATUS_FILE}.tmp"
-
 	ss_status_apply reset >/dev/null 2>&1 || return 1
 
 	ss_status_set status "idle"
@@ -262,41 +253,15 @@ ss_restore_previous_blocklist() {
 }
 
 ss_refresh_lock_open() {
-	mkdir -p "${SS_REFRESH_LOCK%/*}" || return 1
-	eval "exec ${SS_REFRESH_LOCK_FD}>\"${SS_REFRESH_LOCK}\"" || return 1
-	flock -n "${SS_REFRESH_LOCK_FD}" || {
-		eval "exec ${SS_REFRESH_LOCK_FD}>&-"
-		return 1
-	}
+	ss_lock_try "${SS_REFRESH_LOCK}.d"
 }
 
 ss_refresh_lock_open_wait() {
 	local timeout="${1:-120}"
-	local waited=0
-
 	is_valid_integer "$timeout" || timeout=120
-	mkdir -p "${SS_REFRESH_LOCK%/*}" || return 1
-	eval "exec ${SS_REFRESH_LOCK_FD}>\"${SS_REFRESH_LOCK}\"" || return 1
-
-	while ! flock -n "${SS_REFRESH_LOCK_FD}"; do
-		if [ "$waited" -ge "$timeout" ] 2>/dev/null; then
-			eval "exec ${SS_REFRESH_LOCK_FD}>&-" 2>/dev/null || true
-			return 1
-		fi
-
-		ss_should_stop && {
-			eval "exec ${SS_REFRESH_LOCK_FD}>&-" 2>/dev/null || true
-			return 130
-		}
-
-		sleep 1
-		waited=$((waited + 1))
-	done
-
-	return 0
+	ss_lock_wait "${SS_REFRESH_LOCK}.d" "$timeout" ss_should_stop
 }
 
 ss_refresh_lock_close() {
-	flock -u "${SS_REFRESH_LOCK_FD}" 2>/dev/null || true
-	eval "exec ${SS_REFRESH_LOCK_FD}>&-" 2>/dev/null || true
+	ss_lock_release "${SS_REFRESH_LOCK}.d"
 }

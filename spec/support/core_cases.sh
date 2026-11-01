@@ -6,6 +6,7 @@ ss_case_utils() (
 	PKG_NAME='safeshield-test'
 	export PKG_NAME
 	# shellcheck disable=SC1091
+	SS_LOCKING_LIB="$SS_SPEC_ROOT/files/usr/lib/safeshield/locking.sh"
 	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/utils.sh"
 
 	command_exists sh
@@ -25,6 +26,7 @@ ss_case_config_validation() (
 	PKG_NAME='safeshield-test'
 	export PKG_NAME
 	# shellcheck disable=SC1091
+	SS_LOCKING_LIB="$SS_SPEC_ROOT/files/usr/lib/safeshield/locking.sh"
 	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/utils.sh"
 
 	WARNINGS=''
@@ -121,6 +123,7 @@ ss_case_dnsmasq_version() (
 	PKG_NAME='safeshield'
 	export PKG_NAME
 	# shellcheck disable=SC1091
+	SS_LOCKING_LIB="$SS_SPEC_ROOT/files/usr/lib/safeshield/locking.sh"
 	. "$SS_SPEC_ROOT/files/usr/lib/safeshield/utils.sh"
 	DNSMASQ_FEATURE_HEALTH=''
 	ss_status_set() {
@@ -467,8 +470,7 @@ ss_case_status_version() (
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/Makefile" "echo '\$(PKG_VERSION)-r\$(PKG_RELEASE)' > \$(1)/usr/lib/safeshield/version"
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield/core.uc" 'fs.readfile(`/usr/lib/${PKG_NAME}/version`)'
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/share/rpcd/ucode/safeshield/status.uc" 'version: PKG_VERSION,'
-	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/core.sh" 'safeshield_upgrade_required'
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/core.sh" 'failure_code="$(ss_resolve_error_code)"'
 	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/core.sh" 'failure_code="$(ss_artifact_download_error_code)"'
-	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/core.sh" 'if [ "$failure_code" != "safeshield_upgrade_required" ]; then'
+	ss_spec_assert_file_contains "$SS_SPEC_ROOT/files/usr/lib/safeshield/core.sh" 'No blocklist replacement has happened'
 )
