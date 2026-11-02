@@ -1,34 +1,43 @@
 # Changelog
 
+## [0.3.25-r4] - 2026-11-02
+
+### Improved
+
+- Reduce large temporary files during blocklist refreshes and clean up intermediate files after each refresh to lower memory usage on routers.
+- Add a lightweight statistics summary method for dashboards that only need aggregate information while preserving the existing full statistics response.
+
+### Tests
+
+- Verify custom allow/block rule precedence, generated blocklist output, and compatibility between the new statistics summary and existing detailed queries.
+
 ## [0.3.25-r3] - 2026-11-01
 
-### 개선
+### Improved
 
-- 통계 보존 기간이 바뀌지 않은 경우 오래된 데이터 정리 작업을 생략하고, 통계값이 변하지 않은 경우 전체 집계를 반복하지 않도록 개선했습니다.
-- 최근 통계 업로드를 만들 때 해당 기간에 기록이 없는 임시 기기는 빠르게 건너뜁니다.
-- 상태 초기화와 갱신 결과 기록을 묶어서 처리해 상태 파일의 반복적인 읽기·쓰기를 줄였습니다.
+- Skip expired-statistics cleanup when the retention boundary is unchanged, and avoid recomputing aggregate totals when statistics have not changed.
+- Skip temporary devices with no records in the upload period when preparing recent statistics uploads.
+- Batch status initialization and refresh-result updates to reduce repeated reads and writes of the status file.
 
-### 테스트
+### Tests
 
-- 통계 보존 기간 및 업로드 결과가 기존과 동일한지, 여러 상태값을 함께 저장해도 값이 유지되는지 검증합니다.
-
+- Verify that retention behavior and upload output remain unchanged and that batched status updates preserve all values.
 
 ## [0.3.25-r2] - 2026-11-01
 
-### 수정
+### Fixed
 
-- 통계 수집기와 자동 갱신의 중복 실행을 방지하는 잠금 처리를 안정화했습니다.
-- 차단 목록 다운로드나 준비가 실패해도 기존 DNS 보호가 불필요하게 재시작되지 않도록 개선했습니다.
-- 동시에 상태가 갱신될 때 상태 파일이 손상되거나 변경 내용이 사라질 수 있는 문제를 수정했습니다.
+- Harden locking to prevent concurrent statistics collector and automatic refresh runs.
+- Avoid unnecessary DNS service restarts when blocklist downloads or preparation fail, preserving existing protection.
+- Prevent status file corruption and lost updates during concurrent status writes.
 
-### 개선
+### Improved
 
-- 별도 `flock` 명령 없이 OpenWrt 기본 도구로 잠금 기능을 제공합니다.
+- Use built-in OpenWrt tools for locking without requiring a separate `flock` command.
 
-### 테스트
+### Tests
 
-- 잠금 경합·오래된 잠금 복구·소유권, 상태 파일의 동시 갱신, 실패 시 DNS 재시작 방지를 검증합니다.
-
+- Test lock contention, stale-lock recovery, lock ownership, concurrent status updates, and avoidance of DNS restarts after pre-installation failures.
 
 ## [0.3.25-r1] - 2026-10-10
 
