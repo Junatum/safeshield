@@ -41,6 +41,7 @@ jobs:
           git -C /tmp/ucode fetch --depth 1 origin "$UCODE_COMMIT"
           git -C /tmp/ucode checkout --detach FETCH_HEAD
           cmake -S /tmp/ucode -B /tmp/ucode/build \
+            -DCMAKE_C_FLAGS="-Wno-error=discarded-qualifiers" \
             -DDEBUG_SUPPORT=OFF \
             -DFS_SUPPORT=ON \
             -DIO_SUPPORT=OFF \
