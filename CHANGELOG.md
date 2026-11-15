@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.27-r2] - 2026-11-15
+
+### Improved
+
+- Increased the default artifact download timeout from 10 to 20 seconds.
+
+### Tests
+
+- Verified the packaged default, shell configuration fallback, RPC default, and explicitly configured timeout values.
+
+
 ## [0.3.27-r1] - 2026-11-11
 
 - Bump version for release.
