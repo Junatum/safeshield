@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.27-r3] - 2026-11-16
+
+### Fixed
+
+- Use uclient-fetch for SafeShield artifact downloads even when curl is available, avoiding a whole-file curl deadline on growing block lists.
+
+### Improved
+
+- Set the artifact transfer inactivity timeout to 30 seconds while retaining a separate 20-second curl API timeout and rejecting API redirects.
+- Keep signed artifact URLs out of download error logs and remove incomplete files on failure.
+- Declare both curl and uclient-fetch as package dependencies to make the transport choice predictable.
+
+### Tests
+
+- Added transport selection, timeout, and credential-redaction regression coverage.
+
 ## [0.3.27-r2] - 2026-11-15
 
 ### Improved
@@ -9,7 +25,6 @@
 ### Tests
 
 - Verified the packaged default, shell configuration fallback, RPC default, and explicitly configured timeout values.
-
 
 ## [0.3.27-r1] - 2026-11-11
 
