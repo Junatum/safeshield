@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.28-r1] - 2026-11-18
+
+- Bump version for release.
+
 ## [0.3.27-r3] - 2026-11-16
 
 ### Fixed
